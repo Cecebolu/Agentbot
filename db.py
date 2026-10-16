@@ -283,6 +283,26 @@ def first_sent_date():
     with conn() as c:
         return c.execute("SELECT MIN(sent_on) FROM sent").fetchone()[0]
 
+def sent_count(lead_id):
+    with conn() as c:
+        return c.execute("SELECT COUNT(*) FROM sent WHERE lead_id=?", (lead_id,)).fetchone()[0]
+
+def awaiting_followup():
+    """Leads still at 'sent' that have had exactly one email, oldest send first. Each row is
+    the lead plus that email's sent_id, message_id, sent_subject and sent_on."""
+    with conn() as c:
+        return c.execute("""
+            SELECT l.*, s.id AS sent_id, s.message_id, s.sent_subject, s.sent_on
+            FROM leads l JOIN sent s ON s.lead_id = l.id
+            WHERE l.status = 'sent' AND (SELECT COUNT(*) FROM sent s2 WHERE s2.lead_id = l.id) = 1
+            ORDER BY s.id""").fetchall()
+
+def recent_out_of_office(lead_id, days):
+    """Whether an out-of-office reply from this lead arrived in the last `days` days."""
+    with conn() as c:
+        return c.execute("SELECT 1 FROM replies WHERE lead_id=? AND label='out_of_office'"
+                         " AND received_at >= datetime('now', ?)", (lead_id, f"-{int(days)} days")).fetchone() is not None
+
 def emailed_lead_ids():
     with conn() as c:
         return {r[0] for r in c.execute("SELECT DISTINCT lead_id FROM sent")}

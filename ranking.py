@@ -138,10 +138,10 @@ def save_scores():
 def waiting():
     """Verified leads in the order they will be emailed: highest score first,
     then oldest-found first. An address on the suppression list is never waiting,
-    whatever its score, and neither is a lead that has already been emailed
-    (even if its status was set back to verified) until follow-ups are approved."""
+    whatever its score, and neither is a lead that has already been emailed, even if
+    its status was set back to verified: a first email is never sent twice."""
     suppressed = db.suppressed_emails()
-    emailed = set() if config.FOLLOWUPS_APPROVED else db.emailed_lead_ids()
+    emailed = db.emailed_lead_ids()
     leads = [l for l in db.leads_by_status("verified")
              if l["email"] not in suppressed and l["id"] not in emailed]
     return sorted(leads, key=lambda l: (-score(l), l["id"]))

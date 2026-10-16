@@ -1,0 +1,11 @@
+Hello {company} team,
+
+Following up on my earlier note about sending OTPs, account alerts and customer notifications by SMS.
+
+If it's useful, I can send our rates and API docs so you can compare them with what you use today. And if someone else looks after SMS, I'd be glad to contact them instead.
+
+Kind regards,
+Florence
+TalkSasa Communications Ltd
++254 762 000 008
+{website}

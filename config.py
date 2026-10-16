@@ -25,8 +25,10 @@ SEND_DELAY_SECONDS = int(env("SEND_DELAY_SECONDS", "90"))  # gap between emails
 BOUNCE_LIMIT_PERCENT = float(env("BOUNCE_LIMIT_PERCENT", "3"))
 BOUNCE_WINDOW_DAYS = int(env("BOUNCE_WINDOW_DAYS", "14"))
 BOUNCE_MIN_SENDS = int(env("BOUNCE_MIN_SENDS", "20"))
-# A lead that has already been emailed is never emailed again unless this is "true"
+# "true" lets each lead get one follow-up (templates/followup/<industry>.txt) after
+# FOLLOWUP_AFTER_DAYS business days without an answer. A first email is never sent twice.
 FOLLOWUPS_APPROVED = env("FOLLOWUPS_APPROVED", "false").strip().lower() == "true"
+FOLLOWUP_AFTER_DAYS = int(env("FOLLOWUP_AFTER_DAYS", "5"))
 
 # Reading replies (IMAP)
 IMAP_HOST = env("IMAP_HOST")

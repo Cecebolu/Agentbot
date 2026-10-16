@@ -33,38 +33,6 @@ def waiting(tmp_path, monkeypatch):
     return telegram
 
 
-@pytest.fixture
-def smtp(monkeypatch):
-    """A fake mail server. errors[address] = exceptions to raise on its next attempts
-    (None = accept); connect_ok = how many connections succeed (None = all)."""
-    world = {"connects": 0, "delivered": [], "errors": {}, "connect_ok": None}
-
-    class FakeSMTP:
-        def __init__(self, host, port, timeout=None):
-            world["connects"] += 1
-            if world["connect_ok"] is not None and world["connects"] > world["connect_ok"]:
-                raise ConnectionRefusedError("mail server down")
-
-        def starttls(self):
-            pass
-
-        def login(self, *a):
-            pass
-
-        def quit(self):
-            pass
-
-        def send_message(self, msg):
-            planned = world["errors"].get(msg["To"])
-            error = planned.pop(0) if planned else None
-            if error:
-                raise error
-            world["delivered"].append(msg["To"])
-
-    monkeypatch.setattr(sender.smtplib, "SMTP", FakeSMTP)
-    return world
-
-
 def status(email):
     return db.find_lead_by_email(email)["status"]
 
@@ -248,5 +216,5 @@ def test_dry_run_still_previews_when_paused(waiting, smtp, capsys):
     history(50, 3)
     sender.run(dry_run=True)
     out = capsys.readouterr().out
-    assert "would be paused" in out and "(dry run) would send 4 emails" in out
+    assert "would be paused" in out and "(dry run) would send 0 follow-ups and 4 first emails" in out
     assert smtp["connects"] == 0

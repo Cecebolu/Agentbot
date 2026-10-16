@@ -5,6 +5,7 @@ import imaplib
 import re
 import smtplib
 import time
+from datetime import date, timedelta
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, formataddr
 from pathlib import Path
@@ -104,28 +105,86 @@ def to_html(text):
 
 
 def build(lead):
+    """The first email to a lead: its industry's template, with the PDF if there is one."""
     tname, subject, body = load_template(lead["industry"])
-    pdf = attachment()
+    return compose(lead, fill(subject, lead), body, attachment()), tname
+
+
+def compose(lead, subject, body, pdf=None, in_reply_to=None):
+    """The email itself: the template body filled in for this lead, as plain text and HTML,
+    with our unsubscribe footer, and the PDF if given. in_reply_to (a Message-ID) makes it
+    part of that email's thread."""
     def tidy(t):
         return re.sub(r"\n{3,}", "\n\n", t.rstrip())  # close the gap left by an empty placeholder line
     text = tidy(fill(body, lead, attached=bool(pdf)))
     html_body = to_html(tidy(fill(body, lead, attached=bool(pdf), for_html=True)))
-    body = text + (
-        "\n\n--\nIf you'd rather not hear from us, just reply \"unsubscribe\" "
-        "and we won't email you again."
-    )
+    text += ("\n\n--\nIf you'd rather not hear from us, just reply \"unsubscribe\" "
+             "and we won't email you again.")
     msg = EmailMessage()
     msg["From"] = formataddr((config.FROM_NAME, config.FROM_EMAIL))
     msg["To"] = lead["email"]
-    msg["Subject"] = fill(subject, lead)
+    msg["Subject"] = subject
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid(domain=config.FROM_EMAIL.split("@")[1])
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+        msg["References"] = in_reply_to
     msg["List-Unsubscribe"] = f"<mailto:{config.FROM_EMAIL}?subject=unsubscribe>"
-    msg.set_content(body)
+    msg.set_content(text)
     msg.add_alternative(html_body, subtype="html")
     if pdf:  # turns the message into multipart/mixed: (plain + HTML) + PDF
         msg.add_attachment(pdf.read_bytes(), maintype="application", subtype="pdf", filename=pdf.name)
-    return msg, tname
+    return msg
+
+
+# --- Follow-ups ---
+
+FOLLOWUP_DIR = TEMPLATE_DIR / "followup"
+# A lead whose out-of-office reply came in this recently is probably still away: its
+# follow-up waits until then
+OUT_OF_OFFICE_HOLD_DAYS = 7
+
+
+def followup_template(lead):
+    """templates/followup/<industry>.txt, or None if that industry has no follow-up."""
+    path = FOLLOWUP_DIR / f"{personalise.industry_key(lead)}.txt"
+    return path if path.exists() else None
+
+
+def build_followup(lead):
+    """The follow-up to a lead's first email: its industry's follow-up template, no PDF,
+    sent as a reply in the same thread ("Re: <first subject>"). `lead` is a row from
+    db.awaiting_followup, which carries the first email's message_id and sent_subject."""
+    path = followup_template(lead)
+    first_subject = lead["sent_subject"] or fill(load_template(lead["industry"])[1], lead)
+    subject = first_subject if first_subject.lower().startswith("re:") else f"Re: {first_subject}"
+    msg = compose(lead, subject, path.read_text(encoding="utf-8").strip(), in_reply_to=lead["message_id"])
+    return msg, f"followup/{path.stem}"
+
+
+def business_days_after(day, n):
+    """The date n working days (Monday to Friday) after `day`."""
+    while n:
+        day += timedelta(days=1)
+        if day.weekday() < 5:
+            n -= 1
+    return day
+
+
+def followups_due():
+    """Leads due their one follow-up, oldest first email first: follow-ups approved, still
+    at 'sent' after exactly one email, FOLLOWUP_AFTER_DAYS business days since it, an
+    approved industry with a follow-up template, not suppressed, and no out-of-office
+    reply in the last week. A lead that replied, bounced or unsubscribed is no longer
+    at 'sent', so it never gets one."""
+    if not config.FOLLOWUPS_APPROVED:
+        return []
+    today, suppressed = date.today(), db.suppressed_emails()
+    return [lead for lead in db.awaiting_followup()
+            if personalise.approved(lead) and followup_template(lead)
+            and business_days_after(date.fromisoformat(lead["sent_on"]), config.FOLLOWUP_AFTER_DAYS) <= today
+            and lead["email"] not in suppressed
+            and not db.recent_out_of_office(lead["id"], OUT_OF_OFFICE_HOLD_DAYS)]
 
 
 def _folders(box):
@@ -201,18 +260,22 @@ def save_to_sent(msg, sent_at):
         return False
 
 
-def deliver(smtp, lead, msg, tname):
+def deliver(smtp, lead, msg, tname, followup=False):
     """Send one email, record exactly what went out, and file it in Sent.
-    Every send (first email or follow-up) goes through here, so this is also where a
-    second email to the same lead is refused until follow-ups are approved."""
+    Every send goes through here, so this is also where the limits are kept: a first email
+    only to a lead never emailed, and one follow-up, only when follow-ups are approved."""
     if not personalise.approved(lead):
         raise RuntimeError(f"{lead['email']}: industry {lead['industry'] or 'default'!r} is not approved in uses.yaml")
-    if lead["id"] in db.emailed_lead_ids() and not config.FOLLOWUPS_APPROVED:
-        raise RuntimeError(f"{lead['email']} has already been emailed and follow-ups are not approved "
-                           "(FOLLOWUPS_APPROVED in .env)")
+    emailed = db.sent_count(lead["id"])
+    if followup and not config.FOLLOWUPS_APPROVED:
+        raise RuntimeError(f"{lead['email']}: follow-ups are not approved (FOLLOWUPS_APPROVED in .env)")
+    if followup and emailed != 1:
+        raise RuntimeError(f"{lead['email']}: a follow-up goes only after exactly one email ({emailed} sent)")
+    if not followup and emailed:
+        raise RuntimeError(f"{lead['email']} has already been emailed")
     smtp.send_message(msg)
     sent_at = time.time()
-    variant = "personal" if personalise.picked_uses(lead) else "template"
+    variant = "followup" if followup else "personal" if personalise.picked_uses(lead) else "template"
     db.record_sent(lead["id"], msg["Message-ID"], tname, str(msg["Subject"]), plain_of(msg), variant)
     save_to_sent(msg, sent_at)
 
@@ -329,31 +392,38 @@ def run(dry_run=False):
         return
     if paused:
         print(f"NOTE: a real send would be paused: {paused}.")
-    # Highest-scoring leads first (younger companies, busy niches, own-domain email),
-    # then oldest-found first. Start years are needed for every waiting lead to rank them.
-    ranking.fill_years()
-    leads = approved_waiting()[:remaining]
-    if not leads:
-        print("No verified leads waiting in an approved industry.")
+    # Follow-ups first: they fall due on a set day, and a second note is answered more often
+    # than a first one. New leads get what is left of today's limit.
+    due = followups_due()[:remaining]
+    leads = []
+    if remaining > len(due):
+        # Highest-scoring leads first (younger companies, busy niches, own-domain email),
+        # then oldest-found first. Start years are needed for every waiting lead to rank them.
+        ranking.fill_years()
+        leads = approved_waiting()[:remaining - len(due)]
+        # Write personal lines for any of today's leads that don't have them yet
+        if leads and (personalise.run(leads) or any(l["confidence"] is None for l in leads)):
+            leads = approved_waiting(quiet=True)[:remaining - len(due)]
+    batch = [(lead, True) for lead in due] + [(lead, False) for lead in leads]
+    if not batch:
+        print("Nothing to send: no follow-ups due and no verified leads waiting in an approved industry.")
         return
-    # Write personal lines for any of today's leads that don't have them yet
-    if personalise.run(leads) or any(l["confidence"] is None for l in leads):
-        leads = approved_waiting(quiet=True)[:remaining]
 
     if dry_run:
-        for lead in leads[:3]:
-            msg, _ = build(lead)
-            print("=" * 60, f"\nTo: {msg['To']}\nSubject: {msg['Subject']}\n{personal_lines(lead)}"
-                  f"\n\n{plain_of(msg)}")
-        print(f"\n(dry run) would send {len(leads)} emails.")
+        for lead, followup in batch[:2] + [b for b in batch if not b[1]][:1 if due else 0]:
+            msg, _ = build_followup(lead) if followup else build(lead)
+            print("=" * 60, f"\n{'FOLLOW-UP' if followup else 'FIRST EMAIL'}\nTo: {msg['To']}\n"
+                  f"Subject: {msg['Subject']}\n" + ("" if followup else personal_lines(lead) + "\n")
+                  + f"\n{plain_of(msg)}")
+        print(f"\n(dry run) would send {len(due)} follow-ups and {len(leads)} first emails.")
         return
 
     counts = {"sent": 0, "bounced": 0, "failed": 0}
     in_a_row = 0  # failures since the last email that went out
     s = connect()
     try:
-        for i, lead in enumerate(leads, 1):
-            outcome = send_one(s, lead)
+        for i, (lead, followup) in enumerate(batch, 1):
+            outcome = send_one(s, lead, followup)
             if outcome == "reconnect":
                 # The connection dropped: reconnect once and try this lead again
                 close(s)
@@ -363,7 +433,7 @@ def run(dry_run=False):
                     print(f"Lost the connection to the mail server and could not reconnect ({e}). "
                           f"Stopping: the other leads stay waiting for the next send.")
                     break
-                outcome = send_one(s, lead)
+                outcome = send_one(s, lead, followup)
                 if outcome == "reconnect":
                     print("Lost the connection to the mail server again. Stopping: the other "
                           "leads stay waiting for the next send.")
@@ -372,7 +442,7 @@ def run(dry_run=False):
                 break
             counts[outcome] += 1
             in_a_row = in_a_row + 1 if outcome == "failed" else 0
-            print(f"[{i}/{len(leads)}] {outcome} {lead['email']}")
+            print(f"[{i}/{len(batch)}] {outcome}{' follow-up' if followup else ''} {lead['email']}")
             if outcome == "bounced" and bounce_gate():
                 _paused(bounce_gate())
                 break
@@ -380,7 +450,7 @@ def run(dry_run=False):
                 print(f"{in_a_row} emails failed in a row, so the problem is probably not the leads. "
                       "Stopping: the other leads stay waiting for the next send.")
                 break
-            if i < len(leads):
+            if i < len(batch):
                 time.sleep(config.SEND_DELAY_SECONDS)
     finally:
         close(s)
@@ -408,19 +478,19 @@ def close(s):
         pass  # already gone
 
 
-def send_one(s, lead):
-    """Try to email one lead. Returns what happened:
+def send_one(s, lead, followup=False):
+    """Try to email one lead its first email, or its follow-up. Returns what happened:
     "sent", "bounced" (address refused), "failed" (this email didn't go out; the lead stays
     waiting and is tried again next time), "reconnect" (the connection dropped before the
     email went out) or "stop" (the server refuses our sender or login: no point going on).
     Anything that goes wrong after the email has gone out is not caught here, so the batch
     stops instead of risking a second email to the same lead."""
     try:
-        msg, tname = build(lead)
+        msg, tname = build_followup(lead) if followup else build(lead)
     except Exception as e:  # e.g. a template with a broken {placeholder}
         return _failed(lead, f"could not build the email: {e}")
     try:
-        deliver(s, lead, msg, tname)
+        deliver(s, lead, msg, tname, followup)
     except smtplib.SMTPRecipientsRefused:
         db.set_status(lead["id"], "bounced", "send")
         return "bounced"
@@ -437,7 +507,8 @@ def send_one(s, lead):
         return "reconnect"
     except RuntimeError as e:  # deliver's own checks: industry not approved, already emailed
         return _failed(lead, str(e))
-    db.set_status(lead["id"], "sent", "send")
+    if not followup:  # after a follow-up the lead stays at sent, waiting for an answer
+        db.set_status(lead["id"], "sent", "send")
     return "sent"
 
 

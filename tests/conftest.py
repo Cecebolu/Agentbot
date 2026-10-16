@@ -14,6 +14,7 @@ import config  # noqa: E402
 import db  # noqa: E402
 import inbox  # noqa: E402
 import notify  # noqa: E402
+import sender  # noqa: E402
 from fakemail import SENT_ID  # noqa: E402
 
 
@@ -52,3 +53,35 @@ def alerts(monkeypatch):
     sent = []
     monkeypatch.setattr(notify, "send", sent.append)
     return sent
+
+
+@pytest.fixture
+def smtp(monkeypatch):
+    """A fake mail server. errors[address] = exceptions to raise on its next attempts
+    (None = accept); connect_ok = how many connections succeed (None = all)."""
+    world = {"connects": 0, "delivered": [], "errors": {}, "connect_ok": None}
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None):
+            world["connects"] += 1
+            if world["connect_ok"] is not None and world["connects"] > world["connect_ok"]:
+                raise ConnectionRefusedError("mail server down")
+
+        def starttls(self):
+            pass
+
+        def login(self, *a):
+            pass
+
+        def quit(self):
+            pass
+
+        def send_message(self, msg):
+            planned = world["errors"].get(msg["To"])
+            error = planned.pop(0) if planned else None
+            if error:
+                raise error
+            world["delivered"].append(msg["To"])
+
+    monkeypatch.setattr(sender.smtplib, "SMTP", FakeSMTP)
+    return world
