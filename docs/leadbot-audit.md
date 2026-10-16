@@ -2,13 +2,15 @@
 
 As of 16 Oct 2026. Exported from the shared audit doc: https://claude.ai/code/artifact/0d258e17-f0f1-41cf-9596-28e1aa38b918
 
-Status: audit only. No code has been changed. Phase 1 starts only after the owner approves it.
+Status: the urgent Phase 1 fixes are done (see Progress since the audit); the rest of the roadmap waits for the owner's approval.
 
 ## 1. Executive summary
 
 LeadBot works end to end for one operator, but its reply handling can turn interested prospects into permanent unsubscribes. That must be fixed before sending volume rises. Since 11 Oct 2026 it has found 53 leads, sent 41 emails to 39 of them and logged 2 bounces. No human has replied yet.
 
 **What it does today.** It finds Kenyan companies by web search or CSV, scrapes a contact address and checks its domain's MX record. It ranks leads on a 0–6 score and emails up to 25 a day from 38 industry templates, 8 of which are approved. It reads replies from known leads, labels them with regex rules and an LLM, sends interested and question replies to Telegram, and shows everything on a local dashboard. It is about 2,100 lines of Python in 14 modules sharing one SQLite file.
+
+**Update, 16 Oct 2026:** limitations 1 to 3 below are fixed, along with a new bounce gate. All four urgent fixes are tested and on GitHub; see *Progress since the audit*. Limitation 4 (data history) and the compliance sign-off in 5 are still open.
 
 **Most important limitations, all checked against the code:**
 
@@ -19,6 +21,37 @@ LeadBot works end to end for one operator, but its reply handling can turn inter
 5. **Compliance is unconfirmed.** Kenya's Data Protection (General) Regulations 2021 treat marketing email as direct marketing and require a simple opt-out that is honoured absolutely. LeadBot ignores opt-outs sent from a different address, and ODPC registration is still open.
 
 **Recommendation in one line:** fix reply handling, the send loop and data history first (Phase 1, about 7–9 working days). Keep the modular pipeline, suppression list and audit log. Postpone multichannel sequences, CRM sync and AI scoring until there are replies to learn from.
+
+## Progress since the audit
+
+As of 16 Oct 2026, every urgent reply, alert and sending bug from section 5 is fixed, covered by tests (47, all passing) and pushed to [Fndemi/AgentBot](https://github.com/Fndemi/AgentBot). Sending is paused by the new bounce gate until about 27 Oct.
+
+| Finding | Fix | Roadmap task | Commit |
+| --- | --- | --- | --- |
+| F1, F2: our footer, quoted back in a reply, read as an unsubscribe | Reply text is cleaned of Gmail, Outlook and HTML quoting and of our own footer before any rule runs | 1.8 | [ace5410](https://github.com/Fndemi/AgentBot/commit/ace5410) |
+| F4: a reply already read in a mail app was never processed | Inbox reads all mail since the first send, read or unread; each message is handled once | 1.10 (by date search, not yet a UID watermark) | [ace5410](https://github.com/Fndemi/AgentBot/commit/ace5410) |
+| F5: colleagues' replies and opt-outs ignored | Replies are matched by In-Reply-To; a colleague's unsubscribe (same company domain, never free mail) opts out every lead there and the person who asked | 1.10, 1.15 | [ace5410](https://github.com/Fndemi/AgentBot/commit/ace5410) |
+| "Remove us" not recognised as an opt-out | Rule also covers "remove us" and "take us off" | 1.8 | [ace5410](https://github.com/Fndemi/AgentBot/commit/ace5410) |
+| F3: "on leave, but we'd like a demo" labelled out-of-office | Out-of-office only from auto-reply headers or subject; everything else goes to the AI | 1.9 | [1711d09](https://github.com/Fndemi/AgentBot/commit/1711d09) |
+| F6: a Telegram error lost the alert for good | Alerts wait in an `alert_outbox` table; a failed one is retried at the next check, exactly once | 1.11 | [1711d09](https://github.com/Fndemi/AgentBot/commit/1711d09) |
+| F7: one send error stopped the day's batch | Each lead is handled on its own; reconnect once on a dropped connection; stop on sender refusal or 3 failures in a row; 60 s SMTP timeout | 1.12 | [9c0a8c7](https://github.com/Fndemi/AgentBot/commit/9c0a8c7) |
+| Bounce rate over 3% with nothing to stop sending | Bounce gate: pauses while more than 3% of companies emailed in the last 14 days bounced, and reopens by itself | 1.14 (gate only) | [c1ac451](https://github.com/Fndemi/AgentBot/commit/c1ac451) |
+| No version control or tests | Git repository on GitHub; pytest suite with a fake mailbox, mail server and Telegram | 1.1, 1.2 | [ace5410](https://github.com/Fndemi/AgentBot/commit/ace5410) |
+
+Also done: the approved templates' signature now links to talksasa.com; the live Telegram token was removed from `.env.example`; `previews.txt` is ignored by git.
+
+**Activity on 16 Oct.** 12 emails went to new leads in fintech, SaaS, tech, school and SACCO, with no send failures. One bounced: Machakos Academy's Gmail address doesn't exist. That makes 3 bounces among the 50 companies emailed in the last 14 days (6.0%), so sending is paused until about 27 Oct. The inbox watch is running; no human has replied yet.
+
+**Still open, by roadmap task:**
+
+- F8 and F9, status rules: a new reply resets *meeting*; an auto-reply sets *replied* (1.7)
+- Data history: send snapshots, UTC timestamps, back-fill, numbered migrations (1.3–1.6)
+- F10, scheduler catch-up and failure alerts (1.13); only matters once `auto` is used
+- F11, wider bounce detection, and the SPF/DKIM/DMARC check (rest of 1.14)
+- Classifier confidence and label correction in the dashboard (1.16)
+- F12, day boundary, and F13, dry-run side effects (1.4, 1.17)
+- Emails still go out from the main talksasa.co.ke domain, not a separate outreach domain
+- The inbox watch runs inside a Claude session; it needs its own terminal or a supervisor to keep running
 
 ## 2. Verified architecture and lead lifecycle
 
@@ -164,6 +197,8 @@ Five rules keep the data analysable without losing history:
 
 Seven failures can lose an interested prospect or a day's sending without anyone noticing. Rows marked *reproduced* came from running LeadBot's own `inbox.text_of` and `classifier.quick_rules` on test messages in a scratch folder, without touching `leads.db`. The rest come from reading the code path named.
 
+**Status on 16 Oct 2026:** F1 to F7 are fixed, and F5 is fixed for opt-outs and for replies in our email thread. F8 to F13 are still open. See *Progress since the audit*.
+
 | # | Workflow | Scenario → wrong result | How verified | Severity |
 | --- | --- | --- | --- | --- |
 | F1 | Reply labelling | Outlook reply "Yes please, call me on Thursday" quotes our footer (`just reply "unsubscribe"`) → labelled *unsubscribe*, lead suppressed for good, no alert | Reproduced | High |
@@ -239,7 +274,7 @@ The new files are `deliverability.py`, `scoring.yaml` and `queries.yaml`. The ne
 
 ## 8–9. Phased implementation roadmap
 
-Four phases. Each one ends with every test passing and a short review with the owner before the next starts. Phase 1 is about 7–9 working days. Nothing below has been built; it waits for approval of Phase 1. Every task is tested with pytest against a temporary database or a copy of `leads.db`, never the live file, and with fake SMTP, IMAP, DNS and Telegram objects so no real email is sent.
+Four phases. Each one ends with every test passing and a short review with the owner before the next starts. Phase 1 is about 7–9 working days. Tasks 1.1, 1.2, 1.8–1.12, 1.15 and the bounce gate from 1.14 are done (see Progress since the audit); the rest waits for approval. Every task is tested with pytest against a temporary database or a copy of `leads.db`, never the live file, and with fake SMTP, IMAP, DNS and Telegram objects so no real email is sent.
 
 ### Phase 1: correctness, data integrity, safety and deliverability
 
