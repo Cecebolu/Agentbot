@@ -78,6 +78,24 @@ def is_auto_reply(msg, subject):
     return bool(AUTO_SUBJECT.search(subject))
 
 
+def status_after(current, label):
+    """A lead's status after a reply with this label, or None to leave it as it is. Only
+    replies change status here; the dashboard can still set any status by hand.
+      - unsubscribe: always unsubscribed, whatever the lead's status (an opt-out is absolute)
+      - out_of_office: no change; nobody has answered yet, so the lead still counts as
+        waiting for a reply (and for a follow-up)
+      - bounce: bounced, except for a lead already at meeting or client, or unsubscribed
+      - anything else: replied, but only from new, verified or sent, so a lead at meeting
+        or client never drops back to replied when it writes again"""
+    if label == "unsubscribe":
+        return "unsubscribed"
+    if label == "out_of_office":
+        return None
+    if label == "bounce":
+        return None if current in ("meeting", "client", "unsubscribed") else "bounced"
+    return "replied" if current in ("new", "verified", "sent") else None
+
+
 def send_alerts():
     """Send the Telegram alerts waiting in the queue, oldest first. One that fails stays
     queued and is tried again at the next check, so an alert is never lost to a network
@@ -191,9 +209,10 @@ def check_once():
         reply_id = db.add_reply(lead["id"], sender, subject, body, label, result["summary"], uid_s)
         if not reply_id:
             continue  # stored by an earlier check: nothing is logged or alerted twice
-        new_status = {"unsubscribe": "unsubscribed", "bounce": "bounced"}.get(label, "replied")
         for each in colleagues or [lead]:  # a colleague's opt-out covers every lead at that company
-            db.set_status(each["id"], new_status, "inbox")
+            new_status = status_after(each["status"], label)
+            if new_status:
+                db.set_status(each["id"], new_status, "inbox")
         if label == "unsubscribe" and sender != lead["email"]:
             db.unsubscribe(sender)  # the person who asked is never emailed or added either
 
