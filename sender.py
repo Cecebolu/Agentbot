@@ -316,17 +316,98 @@ def run(dry_run=False):
         print(f"\n(dry run) would send {len(leads)} emails.")
         return
 
-    with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT) as s:
-        s.starttls()
-        s.login(config.SMTP_USER, config.SMTP_PASS)
+    counts = {"sent": 0, "bounced": 0, "failed": 0}
+    in_a_row = 0  # failures since the last email that went out
+    s = connect()
+    try:
         for i, lead in enumerate(leads, 1):
-            msg, tname = build(lead)
-            try:
-                deliver(s, lead, msg, tname)
-            except smtplib.SMTPRecipientsRefused:
-                db.set_status(lead["id"], "bounced", "send")
-                continue
-            db.set_status(lead["id"], "sent", "send")
-            print(f"[{i}/{len(leads)}] sent to {lead['email']}")
+            outcome = send_one(s, lead)
+            if outcome == "reconnect":
+                # The connection dropped: reconnect once and try this lead again
+                close(s)
+                try:
+                    s = connect()
+                except (OSError, smtplib.SMTPException) as e:
+                    print(f"Lost the connection to the mail server and could not reconnect ({e}). "
+                          f"Stopping: the other leads stay waiting for the next send.")
+                    break
+                outcome = send_one(s, lead)
+                if outcome == "reconnect":
+                    print("Lost the connection to the mail server again. Stopping: the other "
+                          "leads stay waiting for the next send.")
+                    break
+            if outcome == "stop":
+                break
+            counts[outcome] += 1
+            in_a_row = in_a_row + 1 if outcome == "failed" else 0
+            print(f"[{i}/{len(leads)}] {outcome} {lead['email']}")
+            if in_a_row >= MAX_FAILURES_IN_A_ROW:
+                print(f"{in_a_row} emails failed in a row, so the problem is probably not the leads. "
+                      "Stopping: the other leads stay waiting for the next send.")
+                break
             if i < len(leads):
                 time.sleep(config.SEND_DELAY_SECONDS)
+    finally:
+        close(s)
+    print(f"Sent {counts['sent']}, bounced {counts['bounced']}, failed {counts['failed']}"
+          f" (failed leads stay waiting and are tried again next time).")
+
+
+# After this many failures in a row the batch stops: the mail server or the email itself is
+# the problem, and going on would only fail the rest of the day's leads too.
+MAX_FAILURES_IN_A_ROW = 3
+
+
+def connect():
+    """A logged-in SMTP connection. Gives up after 60 seconds without an answer."""
+    s = smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT, timeout=60)
+    s.starttls()
+    s.login(config.SMTP_USER, config.SMTP_PASS)
+    return s
+
+
+def close(s):
+    try:
+        s.quit()
+    except Exception:
+        pass  # already gone
+
+
+def send_one(s, lead):
+    """Try to email one lead. Returns what happened:
+    "sent", "bounced" (address refused), "failed" (this email didn't go out; the lead stays
+    waiting and is tried again next time), "reconnect" (the connection dropped before the
+    email went out) or "stop" (the server refuses our sender or login: no point going on).
+    Anything that goes wrong after the email has gone out is not caught here, so the batch
+    stops instead of risking a second email to the same lead."""
+    try:
+        msg, tname = build(lead)
+    except Exception as e:  # e.g. a template with a broken {placeholder}
+        return _failed(lead, f"could not build the email: {e}")
+    try:
+        deliver(s, lead, msg, tname)
+    except smtplib.SMTPRecipientsRefused:
+        db.set_status(lead["id"], "bounced", "send")
+        return "bounced"
+    except (smtplib.SMTPSenderRefused, smtplib.SMTPAuthenticationError) as e:
+        print(f"The mail server refused our sender or login ({e}). Stopping.")
+        _failed(lead, str(e), getattr(e, "smtp_code", None))
+        return "stop"
+    except smtplib.SMTPResponseException as e:
+        if e.smtp_code == 421:  # "service closing": the server is about to hang up
+            return "reconnect"
+        # 4xx: try again later; 5xx: this email was refused. Either way it didn't go out.
+        return _failed(lead, str(e), e.smtp_code)
+    except (smtplib.SMTPServerDisconnected, OSError):
+        return "reconnect"
+    except RuntimeError as e:  # deliver's own checks: industry not approved, already emailed
+        return _failed(lead, str(e))
+    db.set_status(lead["id"], "sent", "send")
+    return "sent"
+
+
+def _failed(lead, error, code=None):
+    with db.conn() as c:
+        db.log_event(c, lead["id"], "send_failed", error=error[:500], smtp_code=code)
+    print(f"  not sent to {lead['email']}: {error}")
+    return "failed"
