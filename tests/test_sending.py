@@ -24,10 +24,13 @@ def waiting(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "FROM_EMAIL", "florence@talksasa.co.ke")
     monkeypatch.setattr(ranking, "fill_years", lambda *a, **k: 0)  # no WHOIS or website lookups
     monkeypatch.setattr(sender, "save_to_sent", lambda *a: True)  # no IMAP
+    telegram = []
+    monkeypatch.setattr(sender.notify, "send", telegram.append)  # no Telegram
     db.init()
     for email in LEADS:
-        db.add_lead("Test Sacco", email.split("@")[1], "sacco", email, "manual")
+        db.add_lead("Test Sacco", email.split("@")[1], "sacco", email, "search")
         db.set_status(db.find_lead_by_email(email)["id"], "verified", "verify")
+    return telegram
 
 
 @pytest.fixture
@@ -159,3 +162,91 @@ def test_error_after_the_email_went_out_stops_without_sending_twice(waiting, smt
     with pytest.raises(sqlite3.OperationalError):
         sender.run()
     assert smtp["delivered"] == ["one@one.co.ke"]  # gone once, never retried
+
+
+# --- Bounce gate ---
+
+def history(emailed, bounced, days_ago=1):
+    """Companies already emailed `days_ago` days before this send; the first `bounced` of
+    them bounced (found by the inbox check later, as most bounces are)."""
+    for i in range(emailed):
+        email = f"past{days_ago}d{i}@past{days_ago}d{i}.co.ke"
+        db.add_lead("Past", email.split("@")[1], "sacco", email, "search")
+        lead_id = db.find_lead_by_email(email)["id"]
+        db.record_sent(lead_id, f"<{days_ago}d{i}@x>", "sacco")
+        db.set_status(lead_id, "bounced" if i < bounced else "sent", "inbox" if i < bounced else "send")
+        with db.conn() as c:  # sent on an earlier day: dated events, today's daily limit untouched
+            c.execute("UPDATE lead_events SET created_at = datetime('now', ?) WHERE lead_id = ?",
+                      (f"-{days_ago} days", lead_id))
+            c.execute("UPDATE sent SET sent_on = date('now', ?) WHERE lead_id = ?", (f"-{days_ago} days", lead_id))
+
+
+def test_gate_pauses_sending_above_the_limit(waiting, smtp):
+    history(50, 2)  # 4%
+    sender.run()
+    assert smtp["connects"] == 0 and smtp["delivered"] == []
+    assert all(status(e) == "verified" for e in LEADS)
+    assert len(waiting) == 1 and "paused" in waiting[0]  # Telegram told
+
+
+def test_gate_open_below_the_limit(waiting, smtp):
+    history(50, 1)  # 2%
+    sender.run()
+    assert smtp["delivered"] == LEADS
+
+
+def test_gate_needs_enough_sends_to_judge(waiting, smtp):
+    history(10, 3)  # 30%, but only 10 sent
+    sender.run()
+    assert smtp["delivered"] == LEADS
+
+
+def test_gate_limit_can_be_raised(waiting, smtp, monkeypatch):
+    monkeypatch.setattr(config, "BOUNCE_LIMIT_PERCENT", 5)
+    history(50, 2)  # 4%
+    sender.run()
+    assert smtp["delivered"] == LEADS
+
+
+def test_gate_reopens_once_the_bounced_sends_age_out(waiting, smtp):
+    history(50, 3, days_ago=20)  # 6%, but sent 20 days ago: outside the 14-day window
+    sender.run()
+    assert smtp["delivered"] == LEADS
+
+
+def test_gate_counts_only_sends_inside_the_window(waiting, smtp):
+    history(30, 3, days_ago=20)  # old bounces: not counted
+    history(30, 0, days_ago=2)   # 0 of 30 recent sends bounced
+    sender.run()
+    assert smtp["delivered"] == LEADS
+
+
+def test_late_bounce_of_a_recent_send_counts(waiting, smtp):
+    history(25, 0, days_ago=3)
+    history(5, 2, days_ago=13)  # bounced; sent 13 days ago, still inside the window
+    sender.run()  # 2 of 30 = 6.7%
+    assert smtp["delivered"] == []
+
+
+def test_gate_reopens_when_too_few_recent_sends_to_judge(waiting, smtp):
+    history(40, 3, days_ago=20)
+    history(10, 1, days_ago=5)  # 10% but only 10 sends in the window
+    sender.run()
+    assert smtp["delivered"] == LEADS
+
+
+def test_bounce_during_the_batch_closes_the_gate(waiting, smtp):
+    history(49, 1)  # 2.0%; one more bounce makes 2 of 50 = 4%
+    smtp["errors"]["one@one.co.ke"] = [smtplib.SMTPRecipientsRefused({"one@one.co.ke": (550, b"No such user")})]
+    sender.run()
+    assert status("one@one.co.ke") == "bounced"
+    assert smtp["delivered"] == []  # stopped before the next lead
+    assert all(status(e) == "verified" for e in LEADS[1:])
+
+
+def test_dry_run_still_previews_when_paused(waiting, smtp, capsys):
+    history(50, 3)
+    sender.run(dry_run=True)
+    out = capsys.readouterr().out
+    assert "would be paused" in out and "(dry run) would send 4 emails" in out
+    assert smtp["connects"] == 0

@@ -19,6 +19,12 @@ FROM_NAME = env("FROM_NAME", "TalkSasa")
 FROM_EMAIL = env("FROM_EMAIL", SMTP_USER)
 DAILY_LIMIT = int(env("DAILY_LIMIT", "25"))         # start low, raise slowly
 SEND_DELAY_SECONDS = int(env("SEND_DELAY_SECONDS", "90"))  # gap between emails
+# Bounce gate: sending pauses while more than BOUNCE_LIMIT_PERCENT of the companies emailed in
+# the last BOUNCE_WINDOW_DAYS have bounced. It reopens by itself as those sends age out of the
+# window. With fewer than BOUNCE_MIN_SENDS companies in the window there is too little to judge.
+BOUNCE_LIMIT_PERCENT = float(env("BOUNCE_LIMIT_PERCENT", "3"))
+BOUNCE_WINDOW_DAYS = int(env("BOUNCE_WINDOW_DAYS", "14"))
+BOUNCE_MIN_SENDS = int(env("BOUNCE_MIN_SENDS", "20"))
 # A lead that has already been emailed is never emailed again unless this is "true"
 FOLLOWUPS_APPROVED = env("FOLLOWUPS_APPROVED", "false").strip().lower() == "true"
 

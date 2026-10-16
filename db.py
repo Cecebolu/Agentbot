@@ -261,6 +261,24 @@ def leads_on_domain(domain):
         return c.execute("SELECT * FROM leads WHERE lower(substr(email, instr(email, '@') + 1)) = ?"
                          " ORDER BY id", (domain.lower(),)).fetchall()
 
+def bounce_stats(days):
+    """(companies emailed, how many of them bounced), for the companies first emailed in the
+    last `days` days. A lead counts once, whether its email went out or its address was
+    refused at sending; a bounce counts whenever it arrived. Leads added by hand (test
+    leads) are left out."""
+    with conn() as c:
+        rows = c.execute(f"""
+            SELECT e.lead_id,
+                   EXISTS (SELECT 1 FROM lead_events b WHERE b.lead_id = e.lead_id AND b.event_type = 'bounced')
+                       OR l.status = 'bounced' AS bounced
+            FROM lead_events e JOIN leads l ON l.id = e.lead_id
+            WHERE (e.event_type = 'email_sent'
+                   OR (e.event_type = 'bounced' AND json_extract(e.detail, '$.by') = 'send'))
+              AND {real('l')}
+            GROUP BY e.lead_id HAVING MIN(e.created_at) >= datetime('now', ?)""",
+                         (f"-{int(days)} days",)).fetchall()
+    return len(rows), sum(r["bounced"] for r in rows)
+
 def first_sent_date():
     with conn() as c:
         return c.execute("SELECT MIN(sent_on) FROM sent").fetchone()[0]

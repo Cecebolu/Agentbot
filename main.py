@@ -106,6 +106,13 @@ def main():
         leads, replies = db.stats()
         print("Leads:", leads or "none")
         print("Replies:", replies or "none")
+        import config
+        import sender
+        emailed, bounced = db.bounce_stats(config.BOUNCE_WINDOW_DAYS)
+        rate = f"{100 * bounced / emailed:.1f}%" if emailed else "n/a"
+        print(f"Bounces: {bounced} of {emailed} companies emailed in the last "
+              f"{config.BOUNCE_WINDOW_DAYS} days ({rate}, limit "
+              f"{config.BOUNCE_LIMIT_PERCENT:g}%)" + (" - SENDING PAUSED" if sender.bounce_gate() else ""))
     elif cmd == "unsubscribe" and args:
         db.unsubscribe(args[0])
         print(f"{args[0]} unsubscribed.")

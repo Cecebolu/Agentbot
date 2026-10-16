@@ -11,6 +11,7 @@ from pathlib import Path
 
 import config
 import db
+import notify
 import personalise
 import ranking
 
@@ -292,11 +293,42 @@ def approved_waiting(quiet=False):
     return leads
 
 
+def bounce_gate():
+    """Why sending must pause, or None. Mail providers start putting a domain's email in
+    spam when too many of the addresses it writes to don't exist, so sending pauses while
+    more than BOUNCE_LIMIT_PERCENT of the companies emailed in the last BOUNCE_WINDOW_DAYS
+    bounced. As those sends age out of the window, sending resumes by itself."""
+    emailed, bounced = db.bounce_stats(config.BOUNCE_WINDOW_DAYS)
+    if emailed < config.BOUNCE_MIN_SENDS:
+        return None
+    rate = 100 * bounced / emailed
+    if rate <= config.BOUNCE_LIMIT_PERCENT:
+        return None
+    return (f"{bounced} of the {emailed} companies emailed in the last {config.BOUNCE_WINDOW_DAYS} "
+            f"days bounced ({rate:.1f}%), over the {config.BOUNCE_LIMIT_PERCENT:g}% limit")
+
+
+def _paused(reason):
+    text = (f"Sending paused: {reason}. It resumes by itself as those emails age out of the "
+            f"{config.BOUNCE_WINDOW_DAYS}-day window, or when you raise BOUNCE_LIMIT_PERCENT in .env.")
+    print(text)
+    try:
+        notify.send("⛔ LeadBot " + text)
+    except Exception:
+        pass  # the message above says it too
+
+
 def run(dry_run=False):
     remaining = config.DAILY_LIMIT - db.sent_today()
     if remaining <= 0:
         print(f"Daily limit of {config.DAILY_LIMIT} reached. Try again tomorrow.")
         return
+    paused = bounce_gate()
+    if paused and not dry_run:
+        _paused(paused)
+        return
+    if paused:
+        print(f"NOTE: a real send would be paused: {paused}.")
     # Highest-scoring leads first (younger companies, busy niches, own-domain email),
     # then oldest-found first. Start years are needed for every waiting lead to rank them.
     ranking.fill_years()
@@ -341,6 +373,9 @@ def run(dry_run=False):
             counts[outcome] += 1
             in_a_row = in_a_row + 1 if outcome == "failed" else 0
             print(f"[{i}/{len(leads)}] {outcome} {lead['email']}")
+            if outcome == "bounced" and bounce_gate():
+                _paused(bounce_gate())
+                break
             if in_a_row >= MAX_FAILURES_IN_A_ROW:
                 print(f"{in_a_row} emails failed in a row, so the problem is probably not the leads. "
                       "Stopping: the other leads stay waiting for the next send.")
