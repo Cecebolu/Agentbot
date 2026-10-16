@@ -27,6 +27,9 @@ QUOTE_START = re.compile(
     re.I)
 # Where the quoted copy starts in an HTML reply
 HTML_QUOTE_START = re.compile(r"<blockquote|<div[^>]+(?:gmail_quote|divRplyFwdMsg|appendonsend)", re.I)
+# Subjects mail apps give automatic replies ("Automatic reply: ...", "Out of Office: ...")
+AUTO_SUBJECT = re.compile(r"^\s*(automatic reply|auto[- ]?reply|autoreply|auto[- ]?response|"
+                          r"out of (the )?office|away from (the )?office)\b", re.I)
 # Our own footer, plain and HTML wording. It says "unsubscribe", so when a reply quotes it
 # without the markers above it would read as an unsubscribe request; it is removed first.
 OUR_FOOTER = re.compile(r"[^\n]*(?:rather not hear from us|click here to unsubscribe)[^\n]*", re.I)
@@ -59,6 +62,37 @@ def text_of(msg):
     body = QUOTE_START.split("\n" + body.replace("\r\n", "\n"), maxsplit=1)[0]
     body = OUR_FOOTER.sub("", body)
     return "\n".join(l for l in body.splitlines() if not l.startswith(">")).strip()
+
+
+def is_auto_reply(msg, subject):
+    """Whether a mail app sent this by itself (out of office, holiday, auto-response),
+    going by the headers it marks such mail with and its subject. The words of the
+    reply are not used: a person can write "on leave" in a real reply."""
+    auto = (msg.get("Auto-Submitted") or "no").strip().lower()
+    if auto != "no":
+        return True
+    if any(msg.get(h) for h in ("X-Autoreply", "X-Autorespond", "X-Autoresponse")):
+        return True
+    if (msg.get("Precedence") or "").strip().lower() == "auto_reply":
+        return True
+    return bool(AUTO_SUBJECT.search(subject))
+
+
+def send_alerts():
+    """Send the Telegram alerts waiting in the queue, oldest first. One that fails stays
+    queued and is tried again at the next check, so an alert is never lost to a network
+    error. Returns how many were sent."""
+    sent = 0
+    for alert in db.pending_alerts():
+        try:
+            notify.send(alert["text"])
+        except Exception as e:
+            db.alert_failed(alert["id"], str(e))
+            print(f"  Telegram alert not sent ({e}); will try again next check.")
+            break  # Telegram is down or unreachable: the rest wait too
+        db.alert_sent(alert["id"])
+        sent += 1
+    return sent
 
 
 def thread_lead(headers):
@@ -97,6 +131,7 @@ def check_once():
     company domain). Read and unread mail alike, since our first send: each message is
     handled once, then remembered. Everything else is skipped: never downloaded in full,
     never sent to the AI, and left unread exactly as it was."""
+    send_alerts()  # alerts left over from a check when Telegram was unreachable
     box = imaplib.IMAP4_SSL(config.IMAP_HOST)
     box.login(config.IMAP_USER, config.IMAP_PASS)
     box.select("INBOX")
@@ -147,11 +182,14 @@ def check_once():
                 newly_skipped.append(uid_s)
                 continue
             result = {"label": "bounce", "summary": f"delivery to {failed} failed"}
+        elif is_auto_reply(msg, subject):
+            result = {"label": "out_of_office", "summary": "automatic reply"}
         else:
             result = classifier.classify(f"Subject: {subject}\n\n{body}")
         label = result["label"]
 
-        if not db.add_reply(lead["id"], sender, subject, body, label, result["summary"], uid_s):
+        reply_id = db.add_reply(lead["id"], sender, subject, body, label, result["summary"], uid_s)
+        if not reply_id:
             continue  # stored by an earlier check: nothing is logged or alerted twice
         new_status = {"unsubscribe": "unsubscribed", "bounce": "bounced"}.get(label, "replied")
         for each in colleagues or [lead]:  # a colleague's opt-out covers every lead at that company
@@ -160,8 +198,9 @@ def check_once():
             db.unsubscribe(sender)  # the person who asked is never emailed or added either
 
         if label in ALERT_ON:
-            notify.lead_alert(lead, sender, subject, label, result["summary"], body)
-            box.uid("store", uid, "+FLAGS", "(\\Seen)")  # you've been alerted
+            # Queued, then sent after the loop: a Telegram error can't stop the check
+            db.queue_alert(reply_id, notify.alert_text(lead, sender, subject, label, result["summary"], body))
+            box.uid("store", uid, "+FLAGS", "(\\Seen)")  # the alert is on its way
         print(f"  {label:15} {sender}  {result['summary']}")
         handled += 1
 
@@ -169,6 +208,7 @@ def check_once():
     box.logout()
     # Heartbeat for the dashboard: when the inbox was last checked
     (Path(__file__).parent / "last_check.txt").write_text(datetime.now().isoformat(timespec="seconds"))
+    send_alerts()
     return handled
 
 

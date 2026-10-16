@@ -10,23 +10,30 @@ ICONS = {"interested": "🔥", "question": "❓", "needs_review": "👀"}
 
 
 def send(text):
+    """Send one Telegram message. Raises if it doesn't get through (network error, or
+    Telegram refusing it), so the caller can keep it and try again."""
     if not config.TELEGRAM_BOT_TOKEN:
         print("[telegram not configured]\n" + text)
         return
-    requests.post(
+    r = requests.post(
         f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
         json={"chat_id": config.TELEGRAM_CHAT_ID, "text": text},
         timeout=15,
     )
+    r.raise_for_status()
 
 
-def lead_alert(lead, reply_from, subject, label, summary, body):
+def alert_text(lead, reply_from, subject, label, summary, body):
     icon = ICONS.get(label, "📩")
     company = lead["company"] if lead else "Unknown company"
     snippet = body.strip()[:400]
-    send(f"{icon} {label.upper()} — {company}\n"
-         f"From: {reply_from}\nSubject: {subject}\n\n"
-         f"Summary: {summary}\n\n\"{snippet}\"")
+    return (f"{icon} {label.upper()} — {company}\n"
+            f"From: {reply_from}\nSubject: {subject}\n\n"
+            f"Summary: {summary}\n\n\"{snippet}\"")
+
+
+def lead_alert(lead, reply_from, subject, label, summary, body):
+    send(alert_text(lead, reply_from, subject, label, summary, body))
 
 
 if __name__ == "__main__":

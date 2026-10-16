@@ -85,6 +85,17 @@ CREATE TABLE IF NOT EXISTS suppression (
     reason TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+-- Telegram alerts waiting to go out; sent_at stays NULL until Telegram accepts one,
+-- so an alert that fails is sent at a later inbox check instead of being lost
+CREATE TABLE IF NOT EXISTS alert_outbox (
+    id INTEGER PRIMARY KEY,
+    reply_id INTEGER UNIQUE REFERENCES replies(id),
+    text TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    sent_at TEXT,
+    attempts INTEGER DEFAULT 0,
+    last_error TEXT
+);
 """
 
 def conn():
@@ -267,9 +278,26 @@ def reply_seen(uid):
     with conn() as c:
         return c.execute("SELECT 1 FROM replies WHERE imap_uid=?", (uid,)).fetchone() is not None
 
+def queue_alert(reply_id, text):
+    with conn() as c:
+        c.execute("INSERT OR IGNORE INTO alert_outbox (reply_id, text) VALUES (?,?)", (reply_id, text))
+
+def pending_alerts():
+    with conn() as c:
+        return c.execute("SELECT * FROM alert_outbox WHERE sent_at IS NULL ORDER BY id").fetchall()
+
+def alert_sent(alert_id):
+    with conn() as c:
+        c.execute("UPDATE alert_outbox SET sent_at=CURRENT_TIMESTAMP, attempts=attempts+1 WHERE id=?",
+                  (alert_id,))
+
+def alert_failed(alert_id, error):
+    with conn() as c:
+        c.execute("UPDATE alert_outbox SET attempts=attempts+1, last_error=? WHERE id=?", (error, alert_id))
+
 def add_reply(lead_id, from_email, subject, body, label, summary, uid):
-    """Returns True if the reply is new. One that is already stored (same imap_uid)
-    is left alone and logs nothing, so checking the inbox again never repeats it."""
+    """Returns the new reply's id, or None if it is already stored (same imap_uid): that
+    one is left alone and logs nothing, so checking the inbox again never repeats it."""
     with conn() as c:
         cur = c.execute(
             "INSERT OR IGNORE INTO replies (lead_id, from_email, subject, body, label, summary, imap_uid)"
@@ -277,9 +305,9 @@ def add_reply(lead_id, from_email, subject, body, label, summary, uid):
             (lead_id, from_email, subject, body, label, summary, uid),
         )
         if cur.rowcount != 1:
-            return False
+            return None
         log_event(c, lead_id, "replied", reply_id=cur.lastrowid, label=label)
-        return True
+        return cur.lastrowid
 
 def skipped_uids():
     with conn() as c:

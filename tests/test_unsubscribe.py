@@ -1,100 +1,11 @@
 """Unsubscribe handling in inbox.check_once, run against a temporary database and a fake
 mailbox. Nothing is sent, no real mailbox is read and the AI is never called for real."""
-import pytest
-
-import classifier
-import config
 import db
-import inbox
-import notify
+from fakemail import SENT_ID, message, run, status
 
 FOOTER = 'If you\'d rather not hear from us, just reply "unsubscribe" and we won\'t email you again.'
 HTML_FOOTER = ('<p>--<br>If you\'d rather not hear from us, <a href="mailto:x@talksasa.co.ke?subject=unsubscribe">'
                'click here to unsubscribe</a>.</p>')
-SENT_ID = "<abc123@talksasa.co.ke>"
-
-
-class FakeMailbox:
-    """Just enough of imaplib.IMAP4_SSL for check_once."""
-
-    def __init__(self, mails):
-        self.mails = mails  # uid (bytes) -> raw message (bytes)
-        self.searches = []
-
-    def __call__(self, host):
-        return self
-
-    def login(self, *a):
-        pass
-
-    def select(self, *a):
-        return ("OK", [b"1"])
-
-    def logout(self):
-        pass
-
-    def uid(self, cmd, *args):
-        if cmd == "search":
-            self.searches.append(args)
-            return ("OK", [b" ".join(self.mails)])
-        if cmd == "fetch":
-            return ("OK", [(b"1", self.mails[args[0]])])
-        return ("OK", [b""])
-
-
-def message(sender, subject, body, html=False, in_reply_to=None):
-    head = f"From: {sender}\r\nTo: florence@talksasa.co.ke\r\nSubject: {subject}\r\n"
-    if in_reply_to:
-        head += f"In-Reply-To: {in_reply_to}\r\n"
-    kind = "text/html" if html else "text/plain"
-    return (head + f"Content-Type: {kind}; charset=utf-8\r\n\r\n{body}\r\n").encode()
-
-
-@pytest.fixture
-def leads(tmp_path, monkeypatch):
-    """A fresh database with three emailed leads, one of them on gmail.com."""
-    monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "test.db"))
-    monkeypatch.setattr(inbox, "Path", lambda *_: tmp_path / "inbox.py")  # heartbeat file
-    db.init()
-    ids = {}
-    for email in ("info@nyerihigh.com", "info@dazzcode.com", "school@gmail.com"):
-        db.add_lead("Test", email.split("@")[1], "school", email, "manual")
-        lead = db.find_lead_by_email(email)
-        db.record_sent(lead["id"], SENT_ID if email == "info@nyerihigh.com" else f"<{email}>", "school")
-        db.set_status(lead["id"], "sent", "send")
-        ids[email] = lead["id"]
-    return ids
-
-
-@pytest.fixture
-def ai(monkeypatch):
-    """Every message the AI is asked about; it always answers "interested"."""
-    asked = []
-
-    def fake_ask(prompt, groq_model=None):
-        asked.append(prompt)
-        return '{"label": "interested", "summary": "wants a call", "confidence": 0.9}'
-
-    monkeypatch.setattr(classifier, "ask", fake_ask)
-    return asked
-
-
-@pytest.fixture
-def alerts(monkeypatch):
-    sent = []
-    monkeypatch.setattr(notify, "send", sent.append)
-    return sent
-
-
-def run(monkeypatch, *mails):
-    box = FakeMailbox({str(i).encode(): m for i, m in enumerate(mails, 1)})
-    monkeypatch.setattr(inbox.imaplib, "IMAP4_SSL", box)
-    inbox.check_once()
-    return box
-
-
-def status(email):
-    return db.find_lead_by_email(email)["status"]
 
 
 def test_footer_link_unsubscribes(leads, ai, alerts, monkeypatch):

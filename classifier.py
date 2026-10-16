@@ -65,8 +65,8 @@ def quick_rules(text):
     if re.search(r"(delivery status notification|undeliverable|mailbox unavailable|"
                  r"address not found|delivery has failed)", t):
         return "bounce"
-    if re.search(r"(out of (the )?office|on leave|auto-?reply|away until)", t):
-        return "out_of_office"
+    # Out-of-office is not decided from the words: "our IT head is on leave, but we'd like a
+    # demo" is interested. inbox.is_auto_reply catches real auto-replies by their headers.
     return None
 
 
