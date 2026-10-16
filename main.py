@@ -12,6 +12,7 @@
   python main.py sent [--days N]         list what was sent (date, company, email, step, subject)
   python main.py sent --show a@b.com     print the full email sent to that address
   python main.py inbox                   check replies once
+  python main.py inbox --catch-up        re-read mail earlier checks skipped; matches are held for you
   python main.py watch                   check replies every few minutes (leave running)
   python main.py auto                    weekdays 9am: discover, verify, personalise, send; inbox in between
   python main.py stats                   counts by status and reply label
@@ -98,7 +99,10 @@ def main():
         sender.preview(args[0] if args else None, limit)
     elif cmd == "inbox":
         import inbox
-        print(f"Handled {inbox.check_once()} replies.")
+        if "--catch-up" in args:
+            print(f"Caught up {inbox.check_once(catch_up=True)} messages an earlier check had skipped.")
+        else:
+            print(f"Handled {inbox.check_once()} replies.")
     elif cmd == "watch":
         import inbox
         inbox.watch()

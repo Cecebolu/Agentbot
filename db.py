@@ -351,6 +351,10 @@ def skipped_uids():
     with conn() as c:
         return {r[0] for r in c.execute("SELECT imap_uid FROM skipped")}
 
+def unskip(uids):
+    with conn() as c:
+        c.executemany("DELETE FROM skipped WHERE imap_uid=?", [(u,) for u in uids])
+
 def add_skipped(uids):
     with conn() as c:
         c.executemany("INSERT OR IGNORE INTO skipped (imap_uid) VALUES (?)", [(u,) for u in uids])

@@ -143,12 +143,22 @@ def find_original_recipient(msg):
     return m.group(1).lower() if m else None
 
 
-def check_once():
+# What a caught-up message is stored as (see check_once): it waits for you, unread by the AI
+HELD = {"label": "needs_review",
+        "summary": "Missed by an earlier check and caught up later; not read by the AI. Please read it."}
+
+
+def check_once(catch_up=False):
     """Reads mail from leads, replies to our emails from anyone (matched by In-Reply-To),
     bounces of our own emails, and unsubscribe requests from a lead's colleagues (same
     company domain). Read and unread mail alike, since our first send: each message is
     handled once, then remembered. Everything else is skipped: never downloaded in full,
-    never sent to the AI, and left unread exactly as it was."""
+    never sent to the AI, and left unread exactly as it was.
+
+    catch_up=True reads only the mail an earlier check skipped, for when the matching has
+    improved since. Whatever now matches a lead is stored as needs_review and sent to you
+    on Telegram, without the AI and without acting on it (bounces and auto-replies are
+    still recognised by their headers). What still doesn't match stays skipped."""
     send_alerts()  # alerts left over from a check when Telegram was unreachable
     box = imaplib.IMAP4_SSL(config.IMAP_HOST)
     box.login(config.IMAP_USER, config.IMAP_PASS)
@@ -156,11 +166,11 @@ def check_once():
     since = since_first_send()
     uids = box.uid("search", None, "SINCE", since)[1][0].split() if since else []
     handled = 0
-    skipped, newly_skipped = db.skipped_uids(), []
+    skipped, newly_skipped, caught = db.skipped_uids(), [], []
     for uid in uids:
         uid_s = uid.decode()
-        if uid_s in skipped or db.reply_seen(uid_s):
-            continue
+        if db.reply_seen(uid_s) or (uid_s in skipped) != catch_up:
+            continue  # a normal check leaves skipped mail alone; a catch-up reads only that
         # Look at the headers only. BODY.PEEK never marks the mail as read.
         _, head = box.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (FROM IN-REPLY-TO REFERENCES)])")
         if not head or not isinstance(head[0], tuple):
@@ -186,8 +196,11 @@ def check_once():
                 newly_skipped.append(uid_s)
                 continue
             lead = colleagues[0]
-            result = {"label": "unsubscribe",
-                      "summary": f"{sender} asked to unsubscribe {sender.rsplit('@', 1)[-1]}"}
+            if catch_up:  # an old request: held for you to act on, not acted on by the rules
+                colleagues, result = [], HELD
+            else:
+                result = {"label": "unsubscribe",
+                          "summary": f"{sender} asked to unsubscribe {sender.rsplit('@', 1)[-1]}"}
         elif is_bounce:
             failed = find_original_recipient(msg)
             lead = db.find_lead_by_email(failed) if failed else None
@@ -203,7 +216,7 @@ def check_once():
         elif is_auto_reply(msg, subject):
             result = {"label": "out_of_office", "summary": "automatic reply"}
         else:
-            result = classifier.classify(f"Subject: {subject}\n\n{body}")
+            result = HELD if catch_up else classifier.classify(f"Subject: {subject}\n\n{body}")
         label = result["label"]
 
         reply_id = db.add_reply(lead["id"], sender, subject, body, label, result["summary"], uid_s)
@@ -216,7 +229,9 @@ def check_once():
         if label == "unsubscribe" and sender != lead["email"]:
             db.unsubscribe(sender)  # the person who asked is never emailed or added either
 
-        if label in ALERT_ON:
+        if catch_up:
+            caught.append(uid_s)
+        if label in ALERT_ON or (catch_up and label == "needs_review"):
             # Queued, then sent after the loop: a Telegram error can't stop the check
             db.queue_alert(reply_id, notify.alert_text(lead, sender, subject, label, result["summary"], body))
             box.uid("store", uid, "+FLAGS", "(\\Seen)")  # the alert is on its way
@@ -224,6 +239,7 @@ def check_once():
         handled += 1
 
     db.add_skipped(newly_skipped)
+    db.unskip(caught)
     box.logout()
     # Heartbeat for the dashboard: when the inbox was last checked
     (Path(__file__).parent / "last_check.txt").write_text(datetime.now().isoformat(timespec="seconds"))
