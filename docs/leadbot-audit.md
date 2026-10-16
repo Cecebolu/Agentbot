@@ -10,7 +10,7 @@ LeadBot works end to end for one operator, but its reply handling can turn inter
 
 **What it does today.** It finds Kenyan companies by web search or CSV, scrapes a contact address and checks its domain's MX record. It ranks leads on a 0–6 score and emails up to 25 a day from 38 industry templates, 8 of which are approved. It reads replies from known leads, labels them with regex rules and an LLM, sends interested and question replies to Telegram, and shows everything on a local dashboard. It is about 2,100 lines of Python in 14 modules sharing one SQLite file.
 
-**Update, 16 Oct 2026:** limitations 1 to 3 below are fixed, along with a new bounce gate. All four urgent fixes are tested and on GitHub; see *Progress since the audit*. Limitation 4 (data history) and the compliance sign-off in 5 are still open.
+**Update, 16 Oct 2026:** limitations 1 to 3 below are fixed, a bounce gate guards deliverability, and each lead now gets one follow-up. All four urgent fixes are tested and on GitHub; see *Progress since the audit*. Limitation 4 (data history) and the compliance sign-off in 5 are still open.
 
 **Most important limitations, all checked against the code:**
 
@@ -24,7 +24,7 @@ LeadBot works end to end for one operator, but its reply handling can turn inter
 
 ## Progress since the audit
 
-As of 16 Oct 2026, every urgent reply, alert and sending bug from section 5 is fixed, covered by tests (47, all passing) and pushed to [Fndemi/AgentBot](https://github.com/Fndemi/AgentBot). Sending is paused by the new bounce gate until about 27 Oct.
+As of 16 Oct 2026, every urgent reply, alert and sending bug from section 5 is fixed, covered by tests (130, all passing) and pushed to [Fndemi/AgentBot](https://github.com/Fndemi/AgentBot). Each lead now also gets one follow-up. Sending, follow-ups included, is paused by the new bounce gate until about 27 Oct.
 
 | Finding | Fix | Roadmap task | Commit |
 | --- | --- | --- | --- |
@@ -36,15 +36,16 @@ As of 16 Oct 2026, every urgent reply, alert and sending bug from section 5 is f
 | F6: a Telegram error lost the alert for good | Alerts wait in an `alert_outbox` table; a failed one is retried at the next check, exactly once | 1.11 | [1711d09](https://github.com/Fndemi/AgentBot/commit/1711d09) |
 | F7: one send error stopped the day's batch | Each lead is handled on its own; reconnect once on a dropped connection; stop on sender refusal or 3 failures in a row; 60 s SMTP timeout | 1.12 | [9c0a8c7](https://github.com/Fndemi/AgentBot/commit/9c0a8c7) |
 | Bounce rate over 3% with nothing to stop sending | Bounce gate: pauses while more than 3% of companies emailed in the last 14 days bounced, and reopens by itself | 1.14 (gate only) | [c1ac451](https://github.com/Fndemi/AgentBot/commit/c1ac451) |
+| F8, F9: a reply reset *meeting* to *replied*; an auto-reply set *replied* | Replies never move a lead backwards; out-of-office leaves the status alone; an unsubscribe always counts. The dashboard can still set any status | 1.7 | [b9597e8](https://github.com/Fndemi/AgentBot/commit/b9597e8) |
+| One touch per lead, no follow-up | One follow-up per lead, 5 business days after the first email, as a reply in the same thread, no PDF; approved wording for the 7 approved industries; skipped once a lead replies, bounces or unsubscribes, and held 7 days after an out-of-office. Switched on 16 Oct | 3.1 | [3e5fc0d](https://github.com/Fndemi/AgentBot/commit/3e5fc0d) |
 | No version control or tests | Git repository on GitHub; pytest suite with a fake mailbox, mail server and Telegram | 1.1, 1.2 | [ace5410](https://github.com/Fndemi/AgentBot/commit/ace5410) |
 
 Also done: the approved templates' signature now links to talksasa.com; the live Telegram token was removed from `.env.example`; `previews.txt` is ignored by git.
 
-**Activity on 16 Oct.** 12 emails went to new leads in fintech, SaaS, tech, school and SACCO, with no send failures. One bounced: Machakos Academy's Gmail address doesn't exist. That makes 3 bounces among the 50 companies emailed in the last 14 days (6.0%), so sending is paused until about 27 Oct. The inbox watch is running; no human has replied yet.
+**Activity on 16 Oct.** 12 emails went to new leads in fintech, SaaS, tech, school and SACCO, with no send failures. One bounced: Machakos Academy's Gmail address doesn't exist. That makes 3 bounces among the 50 companies emailed in the last 14 days (6.0%), so sending is paused until about 27 Oct. The inbox watch is running; no human has replied yet. Follow-ups are switched on: 5 SACCOs emailed on 11 Oct are due, and more fall due each weekday, all going out with the first send after the gate reopens.
 
 **Still open, by roadmap task:**
 
-- F8 and F9, status rules: a new reply resets *meeting*; an auto-reply sets *replied* (1.7)
 - Data history: send snapshots, UTC timestamps, back-fill, numbered migrations (1.3–1.6)
 - F10, scheduler catch-up and failure alerts (1.13); only matters once `auto` is used
 - F11, wider bounce detection, and the SPF/DKIM/DMARC check (rest of 1.14)
@@ -197,7 +198,7 @@ Five rules keep the data analysable without losing history:
 
 Seven failures can lose an interested prospect or a day's sending without anyone noticing. Rows marked *reproduced* came from running LeadBot's own `inbox.text_of` and `classifier.quick_rules` on test messages in a scratch folder, without touching `leads.db`. The rest come from reading the code path named.
 
-**Status on 16 Oct 2026:** F1 to F7 are fixed, and F5 is fixed for opt-outs and for replies in our email thread. F8 to F13 are still open. See *Progress since the audit*.
+**Status on 16 Oct 2026:** F1 to F9 are fixed (F5 for opt-outs and for replies in our email thread). F10 to F13 are still open. See *Progress since the audit*.
 
 | # | Workflow | Scenario → wrong result | How verified | Severity |
 | --- | --- | --- | --- | --- |
@@ -274,7 +275,7 @@ The new files are `deliverability.py`, `scoring.yaml` and `queries.yaml`. The ne
 
 ## 8–9. Phased implementation roadmap
 
-Four phases. Each one ends with every test passing and a short review with the owner before the next starts. Phase 1 is about 7–9 working days. Tasks 1.1, 1.2, 1.8–1.12, 1.15 and the bounce gate from 1.14 are done (see Progress since the audit); the rest waits for approval. Every task is tested with pytest against a temporary database or a copy of `leads.db`, never the live file, and with fake SMTP, IMAP, DNS and Telegram objects so no real email is sent.
+Four phases. Each one ends with every test passing and a short review with the owner before the next starts. Phase 1 is about 7–9 working days. Tasks 1.1, 1.2, 1.7–1.12, 1.15, the bounce gate from 1.14 and the follow-up from 3.1 are done (see Progress since the audit); the rest waits for approval. Every task is tested with pytest against a temporary database or a copy of `leads.db`, never the live file, and with fake SMTP, IMAP, DNS and Telegram objects so no real email is sent.
 
 ### Phase 1: correctness, data integrity, safety and deliverability
 
