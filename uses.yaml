@@ -1,0 +1,119 @@
+# One entry per industry (the name matches the file in templates/).
+# approved: true  = leads in this industry may be emailed.
+#           false = the sender skips them and leaves them waiting.
+# uses: the approved SMS uses, for templates that have a {uses} slot (the first three
+#       are used). The seven approved templates name their uses in their own fixed text.
+default:
+  approved: false
+  uses: [customer updates, reminders, alerts, promotions]
+agriculture:
+  approved: false
+  uses: [payment notices, collection schedules, market price updates, delivery schedules]
+agritech:
+  approved: false
+  uses: [payment alerts, order alerts, delivery notices, OTPs, weather updates, market price updates]
+automotive:
+  approved: false
+  uses: [service reminders, car-ready notices, new stock alerts, offer alerts]
+chama:
+  approved: false
+  uses: [contribution reminders, meeting notices, loan updates, payout updates]
+church:
+  approved: true
+  uses: [event reminders, contribution confirmations, member updates]
+college:
+  approved: false
+  uses: [fee reminders, reporting dates, exam timetables, results notices]
+coworking:
+  approved: false
+  uses: [booking confirmations, meeting room reminders, renewal alerts, payment alerts, event notices]
+delivery_app:
+  approved: false
+  uses: [order updates, delivery updates, rider arrival notices, payment alerts, OTPs]
+digital_marketing_agency:
+  approved: false
+  uses: [promotional campaigns, appointment reminders, event reminders]
+driving_school:
+  approved: false
+  uses: [lesson reminders, test date notices, fee reminders]
+ecommerce:
+  approved: false
+  uses: [order confirmations, delivery updates, payment alerts, OTPs]
+edtech:
+  approved: false
+  uses: [class reminders, OTPs, fee alerts, results notices]
+events:
+  approved: false
+  uses: [invitations, ticket confirmations, event reminders, venue changes]
+events_ticketing:
+  approved: false
+  uses: [ticket confirmations, payment alerts, event reminders, verification codes]
+fintech:
+  approved: true
+  uses: [OTPs, transaction alerts, loan repayment reminders]
+gym_salon:
+  approved: false
+  uses: [appointment reminders, membership renewal notices, offers]
+health:
+  approved: false
+  uses: [appointment reminders, results-ready notices, clinic day announcements, medicine collection notices]
+healthtech:
+  approved: false
+  uses: [appointment reminders, OTPs, payment alerts, results-ready notices]
+hospitality:
+  approved: false
+  uses: [booking confirmations, check-in details, offers, event invitations]
+hr_payroll:
+  approved: true
+  uses: [payslip alerts, OTPs, leave approvals]
+insurance:
+  approved: false
+  uses: [premium reminders, policy renewal notices, claim status updates]
+insurtech:
+  approved: false
+  uses: [OTPs, premium payment alerts, renewal reminders, claim status updates]
+logistics:
+  approved: false
+  uses: [pickup confirmations, parcel tracking updates, delivery notices, collection notices]
+logistics_tech:
+  approved: false
+  uses: [dispatch updates, delivery updates, proof-of-delivery codes, payment alerts, driver notices]
+microfinance:
+  approved: false
+  uses: [repayment reminders, loan approval messages, disbursement messages, overdue notices]
+ngo:
+  approved: false
+  uses: [meeting invitations, training invitations, programme updates, feedback requests]
+professional:
+  approved: false
+  uses: [appointment reminders, deadline reminders, document-ready notices]
+proptech:
+  approved: false
+  uses: [rent reminders, payment confirmations, viewing reminders, OTPs]
+real_estate:
+  approved: false
+  uses: [rent reminders, payment confirmations, maintenance notices, water and power notices]
+retail:
+  approved: false
+  uses: [offers, new stock alerts, order updates, loyalty points messages]
+saas:
+  approved: true
+  uses: [OTPs, account alerts, customer notifications]
+sacco:
+  approved: true
+  uses: [loan reminders, deposit confirmations, AGM notices]
+school:
+  approved: true
+  uses: [fee reminders, parent alerts, exam results]
+security:
+  approved: false
+  uses: [incident alerts, shift notices, payment reminders, deployment notices]
+tech_startup:
+  approved: true
+  uses: [OTPs, account alerts, customer notifications]
+transport:
+  approved: false
+  uses: [booking confirmations, departure reminders, schedule changes, delivery alerts]
+utility:
+  approved: false
+  uses: [bill reminders, outage notices, meter reading alerts, payment reminders]

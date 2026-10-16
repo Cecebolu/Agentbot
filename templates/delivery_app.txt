@@ -1,0 +1,19 @@
+Subject: Delivery updates and OTPs by SMS — can we talk?
+Hello {company} team,
+
+{opener}
+
+I'm {sender} from TalkSasa Communications in Nairobi. Delivery companies use our bulk SMS for {uses}.
+
+I'd like to understand how you send these updates today and whether we could support you.
+
+Would you be open to a quick call or a short visit? I'm happy to bring in our technical team if that's useful.
+
+{attachment_line}
+
+Kind regards,
+{sender}
+{our_company}
+{phone}
+{website}
+{profile_line}

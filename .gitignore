@@ -1,0 +1,15 @@
+.env
+venv/
+*.db
+__pycache__/
+discovered.csv
+leads.csv
+events.csv
+replies.csv
+.auto_last_run
+last_check.txt
+previews.txt
+.pytest_cache/
+*.db-wal
+*.db-shm
+*.db-journal

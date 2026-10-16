@@ -1,0 +1,1313 @@
+<title>TalkSasa LeadBot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* ==========================================================================
+   LeadBot v4 — the Lovable prototype's look, wired to the real LeadBot API.
+   Layout: 240px sidebar on a soft backdrop; the work sits in one framed
+   panel with a sticky top bar. Violet = action, selection, replies only.
+   ========================================================================== */
+:root {
+  --app: #F7F7F8;
+  --bg: #FDFDFD;
+  --card: #FFFFFF;
+  --hover: #F3F3F5;
+  --nav-sel: #EDEDF0;
+  --muted: #F1F1F3;
+  --line: #E3E3E8;
+  --input: #D0D0D6;
+  --fg: #1F1F23;
+  --fg-2: #5A5963;
+  --fg-3: #686771;
+  --primary: #4A3AC2;
+  --primary-hover: #3D2FA8;
+  --primary-soft: #F1EFFC;
+  --primary-line: #D9D3F7;
+  --on-primary: #FFFFFF;
+  --cyan: #16C8E8;
+  --pos: #17784A;  --pos-bg: #E8F7EE;
+  --info: #2563C8; --info-bg: #EAF1FB;
+  --warn: #9A5B06; --warn-bg: #FDF5E2;
+  --neg: #C2362F;  --neg-bg: #FCEBEA;
+  --neu: #63626C;  --neu-bg: #EEEEF1;
+  --chart-sent: #C6C5CD;
+  --chart-reply: #4A3AC2;
+  --shadow-panel: 0 1px 2px rgba(20, 20, 30, .06), 0 0 0 1px rgba(20, 20, 30, .03);
+  --shadow-pop: 0 12px 32px -12px rgba(20, 20, 30, .25), 0 2px 6px rgba(20, 20, 30, .06);
+  --glow: radial-gradient(60% 120% at 0% 0%, rgba(74, 58, 194, .07), transparent 60%), radial-gradient(50% 120% at 100% 0%, rgba(22, 200, 232, .07), transparent 60%);
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --app: #111113; --bg: #161619; --card: #1C1C20; --hover: #232328; --nav-sel: #26262B; --muted: #26262B;
+    --line: #2A2A2F; --input: #3A3A41; --fg: #F2F2F4; --fg-2: #B4B3BD; --fg-3: #9B9AA4;
+    --primary: #A99CFF; --primary-hover: #BDB3FF; --primary-soft: #2A2547; --primary-line: #3E3670; --on-primary: #131316;
+    --pos: #6FD9A0; --pos-bg: #173326; --info: #8FB8F5; --info-bg: #18294A;
+    --warn: #F2C063; --warn-bg: #352A12; --neg: #F59A92; --neg-bg: #3A1C1B; --neu: #9B9AA4; --neu-bg: #26262B;
+    --chart-sent: #3F3F46; --chart-reply: #A99CFF;
+    --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, .04);
+    --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, .6);
+    --glow: radial-gradient(60% 120% at 0% 0%, rgba(169, 156, 255, .12), transparent 60%), radial-gradient(50% 120% at 100% 0%, rgba(22, 200, 232, .07), transparent 60%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --app: #111113; --bg: #161619; --card: #1C1C20; --hover: #232328; --nav-sel: #26262B; --muted: #26262B;
+  --line: #2A2A2F; --input: #3A3A41; --fg: #F2F2F4; --fg-2: #B4B3BD; --fg-3: #9B9AA4;
+  --primary: #A99CFF; --primary-hover: #BDB3FF; --primary-soft: #2A2547; --primary-line: #3E3670; --on-primary: #131316;
+  --pos: #6FD9A0; --pos-bg: #173326; --info: #8FB8F5; --info-bg: #18294A;
+  --warn: #F2C063; --warn-bg: #352A12; --neg: #F59A92; --neg-bg: #3A1C1B; --neu: #9B9AA4; --neu-bg: #26262B;
+  --chart-sent: #3F3F46; --chart-reply: #A99CFF;
+  --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, .04);
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, .6);
+  --glow: radial-gradient(60% 120% at 0% 0%, rgba(169, 156, 255, .12), transparent 60%), radial-gradient(50% 120% at 100% 0%, rgba(22, 200, 232, .07), transparent 60%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body { margin: 0; background: var(--app); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.5;
+  letter-spacing: -0.005em; -webkit-font-smoothing: antialiased; }
+button, input, select { font: inherit; color: inherit; letter-spacing: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3, p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+svg.i.sm { width: 14px; height: 14px; }
+.tnum { font-variant-numeric: tabular-nums; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 4px;
+  border: 1px solid var(--line); background: var(--card); font-family: var(--mono); font-size: 10.5px; color: var(--fg-2); }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-panel); min-width: 0; }
+
+/* ---------- sidebar ---------- */
+.side { position: fixed; inset: 0 auto 0 0; width: 240px; padding: 16px 12px; display: flex; flex-direction: column; gap: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+.brand img { width: 26px; height: 26px; object-fit: contain; border-radius: 6px; background: #FFFFFF; padding: 2px; }
+.brand b { display: block; font-size: 13px; font-weight: 600; line-height: 16px; }
+.brand span { display: block; font-size: 11px; color: var(--fg-3); line-height: 14px; }
+.searchbtn { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--card); color: var(--fg-3); font-size: 13px; box-shadow: var(--shadow-panel); width: 100%; text-align: left; }
+.searchbtn:hover { color: var(--fg); }
+.searchbtn .kbd { margin-left: auto; }
+.nav { display: grid; gap: 2px; }
+.navlink { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; font-size: 13px; font-weight: 500; color: var(--fg-2); }
+.navlink svg { color: var(--fg-3); }
+.navlink:hover { background: var(--hover); color: var(--fg); }
+.navlink[aria-current="page"] { background: var(--nav-sel); color: var(--fg); }
+.navlink[aria-current="page"] svg { color: var(--fg); }
+.navlink .badge { margin-left: auto; }
+.navlink .keys { margin-left: auto; display: none; gap: 2px; opacity: 0; transition: opacity .15s; }
+.navlink:hover .keys { opacity: 1; }
+@media (min-width: 1280px) { .navlink .keys { display: inline-flex; } }
+.badge { border-radius: 999px; background: var(--primary); color: var(--on-primary); font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 6px; }
+.side-foot { margin-top: auto; display: grid; gap: 10px; }
+.eyebrow { padding: 0 8px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-3); }
+.botcard { padding: 12px; display: grid; gap: 12px; }
+.botrow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.botrow b { font-weight: 500; }
+.botrow .when { margin-left: auto; color: var(--fg-3); }
+.pulse { position: relative; width: 8px; height: 8px; flex: none; }
+.pulse i { position: absolute; inset: 0; border-radius: 50%; background: var(--c, var(--pos)); }
+.pulse.live i:first-child { animation: ping 1.6s cubic-bezier(0, 0, .2, 1) infinite; opacity: .5; }
+@keyframes ping { 75%, 100% { transform: scale(2.2); opacity: 0; } }
+.bar { height: 4px; border-radius: 999px; background: var(--muted); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: 999px; background: var(--primary); }
+.side-note { padding: 0 8px; font-size: 11px; color: var(--fg-3); }
+
+/* ---------- frame ---------- */
+.shell { padding: 8px 8px 8px 240px; min-height: 100vh; }
+.frame { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-panel); min-height: calc(100vh - 16px); }
+.topbar { position: sticky; top: 0; z-index: 20; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 24px;
+  border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); border-radius: 12px 12px 0 0; }
+.crumb { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.crumb span { color: var(--fg-3); }
+.crumb b { font-weight: 500; }
+.fresh { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
+.fresh.bad { color: var(--neg); }
+.topbar .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.samplebadge { border: 1px dashed var(--input); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 500; color: var(--fg-2); white-space: nowrap; }
+.topsearch { width: 220px; }
+.iconbtn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; border: 0; background: transparent; color: var(--fg-2); }
+.iconbtn:hover { background: var(--hover); color: var(--fg); }
+main.page { width: 100%; max-width: 1280px; margin: 0 auto; padding: 32px; }
+.mhead { display: none; }
+
+/* ---------- controls ---------- */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 6px;
+  border: 1px solid var(--input); background: var(--card); color: var(--fg); font-size: 14px; font-weight: 500; white-space: nowrap; transition: background .15s, border-color .15s; }
+.btn:hover:not(:disabled) { background: var(--hover); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.btn.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); }
+.btn.ghost { border-color: transparent; background: transparent; color: var(--fg-2); }
+.btn.ghost:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
+.btn.sm { height: 32px; padding: 0 10px; font-size: 13px; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.field { height: 40px; width: 100%; border: 1px solid var(--input); background: var(--card); border-radius: 6px; padding: 0 12px; font-size: 14px; min-width: 0; }
+.field::placeholder { color: var(--fg-3); }
+.withicon { position: relative; display: block; }
+.withicon svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--fg-3); pointer-events: none; }
+.withicon .field { padding-left: 36px; }
+.textlink { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); font-size: 13px; font-weight: 500; background: none; border: 0; padding: 0; }
+.textlink:hover { text-decoration: underline; }
+
+/* ---------- tags ---------- */
+.tag { display: inline-flex; align-items: center; gap: 6px; border-radius: 4px; font-size: 12px; font-weight: 500; white-space: nowrap; line-height: 18px; }
+.tag i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.tag.tint { padding: 1px 6px; }
+.tag.plain { color: var(--fg); }
+.tag.plain i { background: var(--c); }
+.t-pos { --c: var(--pos); } .t-info { --c: var(--info); } .t-warn { --c: var(--warn); } .t-neg { --c: var(--neg); } .t-neu { --c: var(--neu); } .t-pri { --c: var(--primary); }
+.tag.tint.t-pos { background: var(--pos-bg); color: var(--pos); }
+.tag.tint.t-info { background: var(--info-bg); color: var(--info); }
+.tag.tint.t-warn { background: var(--warn-bg); color: var(--warn); }
+.tag.tint.t-neg { background: var(--neg-bg); color: var(--neg); }
+.tag.tint.t-neu { background: var(--neu-bg); color: var(--fg-2); }
+.tag.tint.t-neu i { background: var(--neu); }
+
+/* ---------- page parts ---------- */
+.pagehead { margin-bottom: 32px; }
+.pagehead h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; line-height: 32px; }
+.pagehead p { margin-top: 4px; color: var(--fg-2); }
+.shead { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.shead h2 { font-size: 16px; font-weight: 600; line-height: 22px; }
+.shead p { font-size: 13px; color: var(--fg-2); }
+.stack { display: grid; gap: 40px; }
+.stack > *, .split > *, section { min-width: 0; }
+.notice { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-radius: 8px; padding: 12px 16px; border: 1px solid; }
+.notice.warn { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 30%, transparent); }
+.notice.neg { background: var(--neg-bg); border-color: color-mix(in srgb, var(--neg) 30%, transparent); }
+.notice svg { color: var(--warn); }
+.notice.neg svg { color: var(--neg); }
+.notice .txt { flex: 1; min-width: 220px; }
+.notice b { display: block; font-weight: 500; }
+.notice span { font-size: 13px; color: var(--fg-2); }
+.notice code { font-family: var(--mono); font-size: 12px; background: var(--card); padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); overflow-wrap: anywhere; }
+.empty { padding: 48px 24px; text-align: center; }
+.empty b { display: block; font-size: 15px; font-weight: 500; }
+.empty p { margin: 4px auto 0; max-width: 380px; font-size: 13px; color: var(--fg-2); }
+.empty code { font-family: var(--mono); font-size: 12px; background: var(--muted); padding: 1px 5px; border-radius: 4px; }
+.sk { background: var(--muted); border-radius: 4px; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+
+/* hero */
+.hero { margin: -32px -32px 0; padding: 40px 32px 32px; border-bottom: 1px solid var(--line); background-image: var(--glow); }
+.hero .date { font-size: 13px; font-weight: 500; color: var(--fg-3); }
+.hero h1 { margin-top: 4px; font-size: 28px; font-weight: 600; letter-spacing: -0.02em; line-height: 34px; }
+.hero p { margin-top: 6px; max-width: 600px; color: var(--fg-2); }
+.hero p b { color: var(--fg); font-weight: 600; }
+.hero .cta { margin-top: 20px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* needs reply */
+.qlist { list-style: none; margin: 0; padding: 0; }
+.qlist li + li { border-top: 1px solid var(--line); }
+.qrow { display: grid; grid-template-columns: 220px 120px minmax(0, 1fr) 80px 16px; align-items: center; gap: 4px 16px; padding: 14px 20px; transition: background .15s; }
+.qrow:hover { background: var(--hover); }
+.qrow .who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.qrow .who b { font-weight: 600; }
+.qrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); flex: none; }
+.qrow .sum { color: var(--fg-2); }
+.qrow time { text-align: right; font-size: 13px; color: var(--fg-3); }
+.qrow svg { color: var(--fg-3); }
+.qrow:hover svg { color: var(--fg); }
+
+/* KPI cards */
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.kpi { padding: 20px; display: flex; flex-direction: column; }
+.kpi .lbl { font-size: 12px; font-weight: 500; color: var(--fg-2); }
+.kpi .val { margin-top: 8px; font-size: 28px; font-weight: 600; line-height: 36px; letter-spacing: -0.02em; }
+.kpi .hint { margin-top: 4px; font-size: 12px; line-height: 1.4; color: var(--fg-3); }
+.kpi .hint.warn { color: var(--warn); }
+.kpi .hint.neg { color: var(--neg); }
+.kpi .spark { margin-top: auto; padding-top: 12px; }
+.kpi .spark svg { display: block; width: 100%; height: 28px; }
+.kpi .spark small { display: block; font-size: 11px; color: var(--fg-3); margin-top: 2px; }
+.kpi .meter { margin-top: auto; padding-top: 14px; }
+
+/* activity + pipeline */
+.split { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+.legend { display: flex; gap: 16px; font-size: 13px; color: var(--fg-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend b { font-weight: 600; color: var(--fg); }
+.sw { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.chartpanel { padding: 16px 20px 12px; }
+.series + .series { margin-top: 14px; }
+.series .sh { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--fg-3); margin-bottom: 4px; }
+.series .sh b { font-weight: 500; color: var(--fg-2); }
+.chartbox svg { display: block; width: 100%; }
+.tip { position: absolute; z-index: 5; pointer-events: none; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-pop);
+  border-radius: 6px; padding: 8px 12px; font-size: 13px; min-width: 170px; }
+.tip .r { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--fg-2); }
+.tip .r b { color: var(--fg); }
+.pgroup { padding: 16px 20px; }
+.pgroup + .pgroup { border-top: 1px solid var(--line); }
+.pgroup h3 { display: flex; justify-content: space-between; font-size: 13px; font-weight: 500; color: var(--fg-2); margin-bottom: 8px; }
+.pgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.pgrid b { display: block; font-size: 22px; font-weight: 600; line-height: 28px; }
+.pgrid span { font-size: 13px; color: var(--fg-2); }
+
+/* tables */
+.tscroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead th { text-align: left; font-size: 13px; font-weight: 500; color: var(--fg-2); padding: 10px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th.r, td.r { text-align: right; }
+tbody td { padding: 0 16px; height: 48px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: color-mix(in srgb, var(--hover) 60%, transparent); }
+.sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border-radius: 3px; }
+.sort:hover, th[aria-sort="ascending"] .sort, th[aria-sort="descending"] .sort { color: var(--fg); }
+.sort:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.sort svg { width: 12px; height: 12px; }
+.sort .off { opacity: 0; }
+.ratecell { display: flex; align-items: center; gap: 12px; width: 220px; }
+.ratecell span:first-child { width: 48px; text-align: right; }
+.ratecell .bar { flex: 1; height: 6px; }
+.small { font-size: 13px; color: var(--fg-3); white-space: nowrap; }
+
+/* replies */
+.inbox { display: grid; grid-template-columns: 400px minmax(0, 1fr); height: calc(100vh - 240px); min-height: 560px; overflow: hidden; }
+.ilist { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.itools { padding: 16px; display: grid; gap: 12px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; gap: 4px; background: var(--muted); padding: 4px; border-radius: 6px; }
+.tabs button { flex: 1; height: 32px; border: 0; border-radius: 4px; background: transparent; color: var(--fg-2); font-size: 13px; font-weight: 500; }
+.tabs button[aria-selected="true"] { background: var(--card); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, .06); }
+.ifilters { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.ifilters select { width: auto; padding-right: 28px; }
+.icount { font-size: 12px; color: var(--fg-3); display: flex; gap: 10px; }
+.rlist { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; min-height: 0; }
+.rlist li + li { border-top: 1px solid var(--line); }
+.ritem { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 14px 16px; transition: background .15s; }
+.ritem:hover { background: var(--hover); }
+.ritem[aria-selected="true"] { background: var(--nav-sel); }
+.ritem .top { display: flex; align-items: center; gap: 8px; }
+.ritem .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.ritem .dot.on { background: var(--primary); }
+.ritem .name { flex: 1; font-size: 14px; font-weight: 500; color: var(--fg-2); }
+.ritem.act .name { font-weight: 600; color: var(--fg); }
+.ritem time { font-size: 12px; color: var(--fg-3); flex: none; }
+.ritem .sum { margin-top: 4px; padding-left: 14px; font-size: 13px; color: var(--fg-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ritem .tags { margin-top: 8px; padding-left: 14px; display: flex; gap: 8px; align-items: center; }
+.handled { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg-3); }
+.reader { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
+.rhead { padding: 16px 32px; border-bottom: 1px solid var(--line); }
+.rhead .back { display: none; margin-bottom: 12px; }
+.rtitle { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; }
+.rtitle h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.015em; overflow-wrap: anywhere; }
+.facts { margin: 12px 0 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 24px; font-size: 13px; }
+.facts dt { color: var(--fg-3); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.actions { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.actions .won { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 8px; font-size: 13px; font-weight: 500; color: var(--pos); }
+.feedback { min-height: 20px; padding-top: 8px; font-size: 13px; }
+.feedback .err { color: var(--neg); }
+.feedback .ok { color: var(--pos); }
+.rbody { padding: 24px 32px 40px; display: grid; gap: 24px; }
+.ai { max-width: 680px; border: 1px solid var(--primary-line); background: var(--primary-soft); border-radius: 8px; padding: 14px 16px; }
+.ai .who { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--primary); }
+.ai .who span { font-weight: 400; color: var(--fg-2); }
+.ai p { margin-top: 4px; }
+.orig { max-width: 680px; }
+.orig .lbl { font-size: 12px; font-weight: 500; color: var(--fg-3); }
+.orig h3 { margin: 4px 0 16px; font-size: 16px; font-weight: 600; }
+.letter { font-size: 15px; line-height: 25px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* organisations */
+.ofilters { display: grid; grid-template-columns: minmax(0, 1fr) 200px 180px auto; gap: 8px; }
+.ocount { margin: 12px 0; font-size: 13px; color: var(--fg-2); }
+.orgcell { max-width: 300px; display: grid; padding: 10px 0; }
+.orgcell b { font-weight: 500; }
+.orgcell span { font-size: 13px; color: var(--fg-2); }
+.seqbars { display: flex; gap: 4px; }
+.seqbars i { width: 20px; height: 6px; border-radius: 999px; background: var(--muted); }
+.seqbars i.on { background: var(--primary); }
+.seq p { margin-top: 4px; font-size: 13px; }
+.cards { display: none; list-style: none; margin: 0; padding: 0; }
+.cards li { padding: 16px; display: grid; gap: 12px; }
+.cards li + li { border-top: 1px solid var(--line); }
+.cards .l1 { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.cards .l1 > div { min-width: 0; }
+.cards .l1 > .tag { flex: none; }
+.cards .l1 b { display: block; font-size: 15px; font-weight: 500; }
+.cards .l1 span { display: block; font-size: 13px; color: var(--fg-2); }
+.cards .l2 { display: flex; justify-content: space-between; gap: 12px; align-items: flex-end; }
+.cards .l2 > span { font-size: 12px; color: var(--fg-3); text-align: right; }
+.cards .viewreply { height: 44px; width: 100%; color: var(--primary); }
+
+/* command palette */
+.cmdk-back { position: fixed; inset: 0; z-index: 50; background: rgba(10, 10, 14, .35); display: grid; place-items: start center; padding: 12vh 16px 16px; }
+.cmdk { width: min(600px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-pop); overflow: hidden; }
+.cmdk .in { display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line); color: var(--fg-3); }
+.cmdk input { flex: 1; height: 48px; border: 0; background: transparent; outline: none; font-size: 15px; color: var(--fg); }
+.cmdk ul { list-style: none; margin: 0; padding: 6px; max-height: 360px; overflow-y: auto; }
+.cmdk .grp { padding: 8px 10px 4px; font-size: 11px; font-weight: 500; color: var(--fg-3); }
+.cmdk .opt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; font-size: 14px; cursor: pointer; }
+.cmdk .opt svg { color: var(--fg-3); }
+.cmdk .opt[aria-selected="true"] { background: var(--hover); }
+.cmdk .opt .meta { margin-left: auto; font-size: 12px; color: var(--fg-3); }
+.cmdk .none { padding: 24px; text-align: center; color: var(--fg-3); font-size: 13px; }
+
+.toast { position: fixed; z-index: 60; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 32px);
+  background: var(--card); color: var(--fg); border: 1px solid var(--line); box-shadow: var(--shadow-pop); border-radius: 8px; padding: 10px 14px; font-size: 14px; display: flex; gap: 8px; align-items: center; }
+.toast svg { color: var(--pos); }
+
+/* ---------- organisation panel + timeline ---------- */
+.drawer-back { position: fixed; inset: 0; z-index: 40; background: rgba(10, 10, 14, .28); }
+.drawer { position: fixed; z-index: 41; top: 8px; right: 8px; bottom: 8px; width: min(560px, calc(100% - 16px)); background: var(--card);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-pop); display: flex; flex-direction: column; overflow: hidden; animation: slidein .18s ease-out; }
+@keyframes slidein { from { transform: translateX(16px); opacity: 0; } }
+.dhead { padding: 16px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
+.dhead .row { display: flex; align-items: flex-start; gap: 12px; }
+.dhead .row > div { min-width: 0; }
+.dhead h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; line-height: 24px; overflow-wrap: anywhere; }
+.dhead .sub { font-size: 13px; color: var(--fg-2); overflow-wrap: anywhere; }
+.dhead .close { margin-left: auto; flex: none; }
+.dmeta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--fg-2); align-items: center; }
+.dbody { flex: 1; overflow-y: auto; padding: 20px; }
+.dbody h3 { font-size: 13px; font-weight: 500; color: var(--fg-3); margin-bottom: 16px; }
+.tl { list-style: none; margin: 0; padding: 0; position: relative; }
+.tl::before { content: ""; position: absolute; left: 11px; top: 12px; bottom: 12px; width: 1px; background: var(--line); }
+.tl > li { position: relative; padding: 0 0 20px 36px; }
+.tl > li:last-child { padding-bottom: 0; }
+.tl .node { position: absolute; left: 0; top: 0; width: 23px; height: 23px; border-radius: 50%; display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); color: var(--fg-2); }
+.tl .node.in { background: var(--primary-soft); border-color: var(--primary-line); color: var(--primary); }
+.tl .node svg { width: 12px; height: 12px; }
+.tl .hd { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; min-height: 23px; }
+.tl .hd b { font-weight: 600; }
+.tl .hd time { color: var(--fg-3); margin-left: auto; }
+.tl .box { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--bg); }
+.tl .subj { font-weight: 500; margin-bottom: 6px; overflow-wrap: anywhere; }
+.tl .mail { font-size: 14px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl .mail.clamp { max-height: 132px; overflow: hidden; -webkit-mask-image: linear-gradient(#000 65%, transparent); mask-image: linear-gradient(#000 65%, transparent); }
+.tl .nosave { font-size: 13px; color: var(--fg-3); }
+.tl .more { margin-top: 8px; }
+.tl .rsum { color: var(--fg-2); }
+.tl .rsum small { display: block; font-size: 11px; color: var(--fg-3); margin-bottom: 2px; }
+.tl-msg { font-size: 13px; color: var(--fg-2); }
+.tl-msg.err { color: var(--neg); }
+.tl-msg code { font-family: var(--mono); font-size: 12px; background: var(--muted); padding: 1px 5px; border-radius: 4px; }
+.sentsec { max-width: 680px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.sentsec > summary { list-style: none; cursor: pointer; padding: 12px 16px; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--fg-2); border-radius: 8px; }
+.sentsec > summary::-webkit-details-marker { display: none; }
+.sentsec > summary:hover { color: var(--fg); background: var(--hover); }
+.sentsec > summary .n { font-weight: 400; color: var(--fg-3); }
+.sentsec > summary .chev { margin-left: auto; transition: transform .15s; }
+.sentsec[open] > summary .chev { transform: rotate(90deg); }
+.sentsec > div { padding: 8px 16px 16px; }
+tr.orgrow, li.orgrow { cursor: pointer; }
+tr.orgrow:focus-visible { outline-offset: -2px; }
+.stoday { list-style: none; margin: 0; padding: 0; }
+.stoday li + li { border-top: 1px solid var(--line); }
+.stoday button { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto auto 16px; gap: 16px; align-items: center; padding: 12px 20px; border: 0; background: transparent; text-align: left; transition: background .15s; }
+.stoday button:hover { background: var(--hover); }
+.stoday b { font-weight: 500; }
+.stoday .step { font-size: 13px; color: var(--fg-2); white-space: nowrap; }
+.stoday .ind { font-size: 13px; color: var(--fg-3); white-space: nowrap; }
+.stoday svg { color: var(--fg-3); }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1180px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .qrow { grid-template-columns: minmax(0, 1fr) auto; }
+  .qrow .sum { grid-column: 1 / -1; }
+  .qrow time, .qrow > svg { display: none; }
+}
+@media (max-width: 1023px) {
+  .side { display: none; }
+  .shell { padding: 0; }
+  .frame { border: 0; border-radius: 0; box-shadow: none; min-height: 100vh; }
+  .topbar { border-radius: 0; top: 0; }
+  .mhead { display: block; border-bottom: 1px solid var(--line); background: var(--bg); }
+  .mhead .row1 { display: flex; align-items: center; gap: 8px; padding: 12px 16px 0; font-weight: 600; }
+  .mhead .row1 img { width: 24px; height: 24px; border-radius: 6px; background: #FFFFFF; padding: 2px; }
+  .mhead .row1 .right { margin-left: auto; display: flex; gap: 4px; }
+  .mhead nav { display: flex; gap: 4px; padding: 8px; }
+  .mhead .navlink { flex: 1; justify-content: center; height: 44px; }
+  .mhead .navlink .badge { margin-left: 0; }
+  .topbar { display: none; }
+  main.page { padding: 24px 16px; }
+  .hero { margin: -24px -16px 0; padding: 32px 16px 24px; }
+  .mbot { display: grid !important; gap: 12px; padding: 0 16px 32px; }
+  .inbox { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; overflow: visible; }
+  .ilist { border-right: 0; }
+  .inbox.reading .ilist { display: none; }
+  .inbox:not(.reading) .reader { display: none; }
+  .reader { overflow: visible; }
+  .rhead { padding: 16px; }
+  .rhead .back { display: inline-flex; height: 44px; }
+  .rbody { padding: 20px 16px 32px; }
+  .btn { height: 44px; }
+  .field { height: 44px; }
+  .pagehead.hide-reading { display: none; }
+  .drawer { inset: 0; width: 100%; border-radius: 0; border: 0; }
+  .dhead { padding-top: calc(16px + env(safe-area-inset-top, 0px)); }
+}
+@media (max-width: 767px) {
+  .ofilters { grid-template-columns: minmax(0, 1fr); }
+  .v-organisations .tscroll { display: none; }
+  .v-organisations .cards { display: block; }
+  .kpi { padding: 16px; }
+  .kpi .val { font-size: 24px; line-height: 30px; }
+  .facts { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .facts dd { margin-bottom: 8px; }
+  .shortcuts { display: none; }
+  .stoday button { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 16px; }
+  .stoday .ind, .stoday svg { display: none; }
+}
+@media (max-width: 359px) {
+  .mhead .navlink span.lbl { display: none; }
+}
+@media (max-width: 400px) {
+  .kpis { grid-template-columns: minmax(0, 1fr); }
+  .pgrid b { font-size: 20px; }
+}
+.mbot { display: none; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<aside class="side" aria-label="Sidebar">
+  <div class="brand"><img src="data:image/png;base64,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" alt=""><div><b>LeadBot</b><span>TalkSasa outreach</span></div></div>
+  <button class="searchbtn" data-act="palette"><svg class="i sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Search<span class="kbd">⌘K</span></button>
+  <nav class="nav" aria-label="Primary" id="sidenav"></nav>
+  <div class="side-foot"><p class="eyebrow">Bot</p><div id="botcard"></div><p class="side-note">Runs on this computer only</p></div>
+</aside>
+
+<div class="shell">
+  <div class="frame">
+    <header class="mhead">
+      <div class="row1"><img src="data:image/png;base64,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" alt="">LeadBot
+        <div class="right"><button class="iconbtn" data-act="palette" aria-label="Search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
+        <button class="iconbtn" data-act="theme" aria-label="Switch theme" id="mtheme"></button>
+        <button class="iconbtn" data-act="refresh" aria-label="Refresh data" id="mrefresh"></button></div></div>
+      <nav aria-label="Primary" id="mnav"></nav>
+    </header>
+    <div class="topbar" id="topbar"></div>
+    <main class="page" id="view"></main>
+    <div class="mbot" id="mbot"></div>
+  </div>
+</div>
+<div id="drawer-root"></div>
+<div id="cmdk-root"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+/* ============================ icons ============================ */
+const ICON = {
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+  inbox: '<polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  building: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
+  refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+  arrowR: '<path d="M5 12h14M12 5l7 7-7 7"/>',
+  arrowL: '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+  chevR: '<path d="m9 18 6-6-6-6"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  copy: '<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+  sparkles: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 3v4M21 5h-4"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
+  up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+  down: '<path d="M12 5v14M19 12l-7 7-7-7"/>',
+  loader: '<path d="M21 12a9 9 0 1 1-6.22-8.56"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+};
+const ico = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
+
+/* ======================= vocabulary ======================= */
+const OPERATOR = "Florence";
+const LABEL = {
+  interested:     { text: "Interested",     tone: "pos"  },
+  question:       { text: "Question",       tone: "info" },
+  needs_review:   { text: "Needs review",   tone: "warn" },
+  not_interested: { text: "Not interested", tone: "neu"  },
+  out_of_office:  { text: "Auto-reply",     tone: "neu"  },
+  unsubscribe:    { text: "Unsubscribed",   tone: "neu"  },
+  bounce:         { text: "Bounced",        tone: "neg"  },
+};
+const ACTION_ORDER = ["interested", "question", "needs_review"];
+const STATUS = {
+  new:          { text: "Found",          tone: "neu",  group: "progress" },
+  verified:     { text: "Ready to email", tone: "info", group: "progress" },
+  sent:         { text: "Awaiting reply", tone: "info", group: "progress" },
+  replied:      { text: "Replied",        tone: "pri",  group: "responded" },
+  meeting:      { text: "Meeting set",    tone: "pos",  group: "responded" },
+  client:       { text: "Client",         tone: "pos",  group: "responded" },
+  invalid:      { text: "Invalid email",  tone: "neg",  group: "stopped" },
+  bounced:      { text: "Bounced",        tone: "neg",  group: "stopped" },
+  unsubscribed: { text: "Unsubscribed",   tone: "neu",  group: "stopped" },
+};
+const STATUS_ORDER = ["new", "verified", "sent", "replied", "meeting", "client", "invalid", "bounced", "unsubscribed"];
+const INDUSTRY = {
+  sacco: "SACCOs", microfinance: "Microfinance", school: "Schools", college: "Colleges", church: "Churches", chama: "Chamas",
+  health: "Health", transport: "Transport", retail: "Retail", insurance: "Insurance", real_estate: "Real estate", utility: "Utilities",
+  hospitality: "Hospitality", gym_salon: "Gyms & salons", driving_school: "Driving schools", automotive: "Automotive", agriculture: "Agriculture",
+  events: "Events", security: "Security", professional: "Professional services", ngo: "NGOs", logistics: "Logistics",
+  tech_startup: "Tech startups", fintech: "Fintech", saas: "SaaS", ecommerce: "E-commerce", delivery_app: "Delivery apps", edtech: "Edtech",
+  healthtech: "Healthtech", agritech: "Agritech", proptech: "Proptech", insurtech: "Insurtech", logistics_tech: "Logistics tech",
+  events_ticketing: "Events & ticketing", digital_marketing_agency: "Marketing agencies", coworking: "Coworking", default: "Other",
+};
+const NAV = [
+  { view: "today", label: "Today", icon: "grid", key: "T" },
+  { view: "replies", label: "Replies", icon: "inbox", key: "R" },
+  { view: "organisations", label: "Organisations", icon: "building", key: "O" },
+];
+const MAX_STEPS = 3, SMALL_SAMPLE = 20, POLL_MS = 60000, INBOX_OK_MIN = 20, INBOX_WARN_MIN = 24 * 60;
+const industryName = k => INDUSTRY[k] || (k ? k.replace(/_/g, " ").replace(/^./, c => c.toUpperCase()) : "Other");
+const needsAction = r => !r.handled && ACTION_ORDER.includes(r.label);
+const seqText = s => !s ? "No email sent" : s === 1 ? "Initial email sent" : `Follow-up ${Math.min(s, MAX_STEPS) - 1} sent`;
+
+/* ========================= state ========================= */
+const S = {
+  data: null, mode: "loading", lastOk: null, refreshError: false, refreshing: false,
+  view: "today", pending: null, actionError: null, actionOk: null,
+  replies: { tab: "action", label: "", q: "", selected: null, reading: false, mobileScroll: 0 },
+  orgs: { q: "", industry: "", status: "", sort: "last", dir: "desc" },
+  ind: { sort: "rate", dir: "desc" },
+  cmdk: { open: false, q: "", idx: 0 },
+  org: { id: null },          // organisation panel
+  tl: {},                     // lead id -> { state: loading|ok|error, data, msg, missing }
+  expanded: new Set(),        // email bodies shown in full
+  sentOpen: new Set(),        // reader sections opened
+  sentToday: null,            // null = route not available
+};
+
+/* ======================== helpers ======================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (a, b) => (b ? (a / b) * 100 : null);
+const fmtPct = v => v == null ? "–" : `${v.toFixed(1)}%`;
+const fmtNum = n => Number(n || 0).toLocaleString("en-KE");
+const toDate = s => s ? new Date(s.length === 10 ? s + "T00:00:00" : s) : null;
+function ago(d) {
+  if (!d) return "";
+  const m = Math.round((Date.now() - d) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60); if (h < 24) return `${h}h ago`;
+  const days = Math.round(h / 24); if (days === 1) return "yesterday";
+  return days < 7 ? `${days}d ago` : d.toLocaleDateString("en-KE", { day: "numeric", month: "short" });
+}
+const clock = d => d.toLocaleTimeString("en-KE", { hour: "2-digit", minute: "2-digit" });
+const shortDate = d => d.toLocaleDateString("en-KE", { day: "numeric", month: "short" });
+const fullDate = d => d.toLocaleString("en-KE", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const tag = (key, map = LABEL, tint = true) => { const v = map[key] || { text: key || "Unknown", tone: "neu" }; return `<span class="tag ${tint ? "tint" : "plain"} t-${v.tone}"><i></i>${esc(v.text)}</span>`; };
+const statusTag = k => tag(k, STATUS, false);
+const leadById = id => S.data?.leads.find(l => l.id === id);
+const replyById = id => S.data?.replies.find(r => r.id === id);
+const isTyping = el => !!el && (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable);
+const mobile = () => window.matchMedia("(max-width: 1023px)").matches;
+function toast(msg) { const t = $("#toast"); t.innerHTML = ico("check") + esc(msg); t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2800); }
+
+/* ======================== theme ======================== */
+function currentTheme() {
+  const set = document.documentElement.dataset.theme;
+  return set || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+}
+function applyStoredTheme() { try { const t = localStorage.getItem("leadbot-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {} }
+function toggleTheme() {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("leadbot-theme", next); } catch (e) {}
+  renderChrome(); if (S.view === "today" && S.data) drawActivity();
+}
+
+/* ========================= data ========================= */
+async function getJSON(url, opts = {}) {
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch(url, { ...opts, signal: ctl.signal, cache: "no-store" });
+    const json = (r.headers.get("content-type") || "").includes("json");
+    const body = json ? await r.json() : null;
+    if (!r.ok || !json) throw new Error(body?.detail || `the server answered ${r.status}`);
+    return body;
+  } finally { clearTimeout(timer); }
+}
+function normalise(d) {
+  d.replies = d.replies || []; d.leads = d.leads || [];
+  d.replies.forEach(r => { r.handled = !!r.handled; r._d = toDate(r.received_at); });
+  d.leads.forEach(l => { l._last = toDate(l.last); });
+  d.daily = d.daily || []; d.niches = d.niches || []; d.statusCounts = d.statusCounts || {}; d.bot = d.bot || {};
+  return d;
+}
+async function refresh({ manual = false } = {}) {
+  if (S.refreshing || S.pending) return;
+  S.refreshing = true; renderChrome();
+  try {
+    S.data = normalise(await getJSON("api/all")); S.mode = "live"; S.lastOk = new Date(); S.refreshError = false;
+    try { S.sentToday = (await getJSON("api/sent-today")).emails; } catch (e) { S.sentToday = null; }
+    const open = [S.org.id, ...S.sentOpen].filter(x => x != null);
+    S.tl = Object.fromEntries(Object.entries(S.tl).filter(([k]) => open.includes(+k)));
+    open.forEach(id => loadTimeline(id, { silent: true, force: true }));
+    if (manual) toast("Data refreshed");
+  } catch (e) {
+    if (S.mode === "live") S.refreshError = true;
+    else { S.data = normalise(demoData()); S.mode = "demo"; S.lastOk = new Date(); S.sentToday = demoSentToday(); }
+  } finally { S.refreshing = false; render(); }
+}
+function busy() { const s = window.getSelection ? String(window.getSelection()) : ""; return S.pending || isTyping(document.activeElement) || s.length > 0 || S.cmdk.open; }
+
+/* ===================== email history ===================== */
+async function loadTimeline(id, { silent = false, force = false } = {}) {
+  const cur = S.tl[id];
+  if (!force && cur && (cur.state === "ok" || cur.state === "loading")) return;
+  if (!(silent && cur?.state === "ok")) { S.tl[id] = { state: "loading" }; renderOverlays(); refreshReaderHistory(id); }
+  try {
+    const data = S.mode === "demo" ? demoTimeline(id) : await getJSON(`api/leads/${id}/emails`);
+    S.tl[id] = { state: "ok", data };
+  } catch (e) {
+    if (silent && cur?.state === "ok") return;
+    const msg = e.name === "AbortError" ? "The API didn't answer within 10 seconds" : String(e.message);
+    S.tl[id] = { state: "error", msg, missing: msg === "Not Found" };
+  }
+  renderOverlays(); refreshReaderHistory(id);
+}
+const stepName = n => n === 1 ? "Initial email" : `Follow-up ${n - 1}`;
+function timelineHTML(id, { outOnly = false } = {}) {
+  const t = S.tl[id];
+  if (!t || t.state === "loading") return `<div style="display:grid;gap:12px">${[70, 90, 55].map(w => `<div class="sk" style="height:12px;width:${w}%"></div>`).join("")}</div>`;
+  if (t.state === "error") return t.missing
+    ? `<p class="tl-msg">Email history isn't switched on yet. Add <code>web_extra.py</code> to the leadbot folder and restart the dashboard.</p>`
+    : `<p class="tl-msg err">Couldn't load the email history: ${esc(t.msg)}.</p><button class="btn sm" data-act="tl-retry" data-lead="${id}" style="margin-top:8px">Try again</button>`;
+  const d = t.data;
+  const items = d.emails.map(e => ({ kind: "out", at: toDate(e.sent_at) || toDate(e.sent_on), dateOnly: !e.sent_at, e }))
+    .concat(outOnly ? [] : d.replies.map(r => ({ kind: "in", at: toDate(r.received_at), r })))
+    .sort((a, b) => (a.at || 0) - (b.at || 0));
+  if (!items.length) return `<p class="tl-msg">${outOnly ? "LeadBot hasn't emailed this organisation yet." : "Nothing has been sent to this organisation yet, and there are no replies."}</p>`;
+  return `<ol class="tl">${items.map(it => {
+    if (it.kind === "out") {
+      const e = it.e, key = `${id}-${e.id}`, open = S.expanded.has(key), long = (e.body || "").length > 380;
+      const when = it.at ? (it.dateOnly ? it.at.toLocaleDateString("en-KE", { weekday: "short", day: "numeric", month: "short" }) : fullDate(it.at)) : "";
+      return `<li><span class="node" aria-hidden="true">${ico("send")}</span>
+        <div class="hd"><b>${stepName(e.step)}</b><span style="color:var(--fg-3)">sent by LeadBot</span><time class="tnum">${when}</time></div>
+        <div class="box">${e.body == null && e.subject == null
+          ? `<p class="nosave">The text of this email wasn't saved. LeadBot only keeps copies of emails sent after that was switched on.</p>`
+          : `<p class="subj">${esc(e.subject || "(subject not saved)")}</p>${e.body == null ? `<p class="nosave">Body not saved.</p>`
+            : `<div class="mail ${long && !open ? "clamp" : ""}">${esc(e.body)}</div>${long ? `<button class="textlink more" data-act="expand" data-key="${key}">${open ? "Show less" : "Show full email"}</button>` : ""}`}`}</div></li>`;
+    }
+    const r = it.r;
+    return `<li><span class="node in" aria-hidden="true">${ico("inbox")}</span>
+      <div class="hd"><b>Reply</b>${tag(r.label)}<time class="tnum">${it.at ? fullDate(it.at) : ""}</time></div>
+      <div class="box"><p class="rsum"><small>AI summary</small>${esc(r.summary || "No summary")}</p>
+        ${r.label !== "bounce" ? `<a class="textlink" href="#replies-${r.id}" data-act="close-org-nav" style="margin-top:8px">Open reply ${ico("arrowR", "sm")}</a>` : ""}</div></li>`;
+  }).join("")}</ol>`;
+}
+function openOrg(id) { location.hash = "org-" + id; }
+function closeOrg() {
+  if (S.org.id == null) return;
+  const ret = S.org.ret; S.org = { id: null };
+  history.replaceState(null, "", "#" + (S.view === "replies" && S.replies.reading && S.replies.selected ? "replies-" + S.replies.selected : S.view));
+  renderOverlays(); ret?.focus?.();
+}
+function renderOverlays() {
+  const root = $("#drawer-root"), id = S.org.id;
+  if (id == null || !S.data) { root.innerHTML = ""; return; }
+  const l = leadById(id);
+  if (!l) { root.innerHTML = ""; return; }
+  const keepScroll = $("#drawer-body")?.scrollTop;
+  const had = !!$(".drawer"), ae = document.activeElement;
+  const inside = had && root.contains(ae) ? (ae.id ? "#" + ae.id : ae.dataset?.act ? `.drawer [data-act="${ae.dataset.act}"]${ae.dataset.key ? `[data-key="${ae.dataset.key}"]` : ""}` : null) : null;
+  root.innerHTML = `<div class="drawer-back" data-act="close-org"></div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+      <div class="dhead">
+        <div class="row"><div><h2 id="drawer-title">${esc(l.company)}</h2><p class="sub">${esc(l.email)}</p></div>
+          <button class="iconbtn close" data-act="close-org" aria-label="Close" id="drawer-close">${ico("x")}</button></div>
+        <div class="dmeta"><span>${esc(industryName(l.industry))}</span>${statusTag(l.status)}<span>${seqText(l.step)}</span>${l._last ? `<span>Last activity ${ago(l._last)}</span>` : ""}</div>
+      </div>
+      <div class="dbody" id="drawer-body"><h3>Email history</h3>${timelineHTML(id)}</div>
+    </aside>`;
+  if (keepScroll != null) $("#drawer-body").scrollTop = keepScroll;
+  if (!had) $("#drawer-close").focus();
+  else if (inside) (document.querySelector(inside) || $("#drawer-close")).focus({ preventScroll: true });
+}
+function refreshReaderHistory(id) {
+  const box = document.querySelector(`.sentsec[data-sent="${id}"] > div`);
+  if (box && S.sentOpen.has(id)) box.innerHTML = timelineHTML(id, { outOnly: true });
+}
+function demoTimeline(id) {
+  const l = leadById(id), emails = [], base = l._last || new Date();
+  for (let s = 1; s <= (l.step || 0); s++) {
+    const d = new Date(base); d.setDate(d.getDate() - ((l.step || 0) - s) * 5);
+    const saved = id % 5 !== 0 || s > 1;
+    emails.push({ id: id * 10 + s, step: s, sent_on: d.toISOString().slice(0, 10), sent_at: null,
+      subject: saved ? (s === 1 ? `A quick chat about SMS for ${l.company}?` : `Re: A quick chat about SMS for ${l.company}?`) : null,
+      body: saved ? (s === 1 ? `Hello ${l.company} team,\n\nMy name is Florence from TalkSasa Communications. We help Kenyan organisations reach members and customers by SMS, with reminders, alerts and updates sent under your own name.\n\nI'm not writing to sell you anything today. I'd like to understand how you communicate with your members now and whether we can work together.\n\nWould a short visit or a 15-minute call this week or next work for you?\n\nKind regards,\nFlorence\nTalkSasa Communications`
+        : s === 2 ? `Hello again,\n\nJust checking whether you saw my note last week. Would a short visit or call next week suit you?\n\nKind regards,\nFlorence` : `Hello,\n\nI won't keep emailing. If SMS is ever useful for ${l.company}, just reply to this message.\n\nKind regards,\nFlorence`) : null });
+  }
+  return { lead: l, emails, replies: S.data.replies.filter(r => r.lead_id === id).map(r => ({ ...r })) };
+}
+function demoSentToday() {
+  return S.data.leads.filter(l => l.status === "sent").slice(0, 4).map((l, i) => ({ id: 900 + i, lead_id: l.id, company: l.company, industry: l.industry, step: l.step || 1, subject: null }));
+}
+function poll() {
+  if (S.mode !== "live" || document.hidden) return;
+  if (busy()) { clearTimeout(poll.t); poll.t = setTimeout(poll, 10000); return; }
+  refresh();
+}
+async function post(url, body) {
+  if (S.mode === "demo") return;
+  await getJSON(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+function neighbour(id) { const l = filteredReplies(), i = l.findIndex(r => r.id === id); return i < 0 ? null : (l[i + 1] || l[i - 1] || null)?.id ?? null; }
+async function runAction(kind, r, fn) {
+  if (S.pending) return;
+  S.pending = { kind, id: r.id }; S.actionError = null; S.actionOk = null; render();
+  const next = neighbour(r.id);
+  try {
+    const msg = await fn();
+    const note = S.mode === "demo" ? `${msg} (example data, not saved)` : msg;
+    if (S.replies.tab === "action" && !needsAction(r) && next != null) { S.replies.selected = next; toast(note); }
+    else S.actionOk = { id: r.id, msg: note };
+  } catch (e) {
+    const why = e.name === "AbortError" ? "The API didn't answer within 10 seconds" : String(e.message).replace(/[.\s]+$/, "");
+    S.actionError = { id: r.id, msg: `${why.charAt(0).toUpperCase() + why.slice(1)}. Nothing else was changed. Check the API is running, then try again.` };
+  } finally { S.pending = null; render(); }
+}
+const setHandled = (r, v) => runAction("handled", r, async () => {
+  await post(`api/replies/${r.id}/handled`, { handled: v }); r.handled = v;
+  return v ? `${r.company || r.from_email} marked handled` : "Moved back to needs action";
+});
+function setLeadStatus(r, status) {
+  const lead = leadById(r.lead_id); if (!lead) return;
+  return runAction(status, r, async () => {
+    const old = lead.status;
+    await post(`api/leads/${lead.id}/status`, { status });
+    lead.status = status;
+    S.data.statusCounts[old] = Math.max(0, (S.data.statusCounts[old] || 0) - 1);
+    S.data.statusCounts[status] = (S.data.statusCounts[status] || 0) + 1;
+    if (!r.handled) {
+      try { await post(`api/replies/${r.id}/handled`, { handled: true }); r.handled = true; }
+      catch (e) { throw new Error(`${lead.company} was saved as "${STATUS[status].text}", but the reply couldn't be marked handled (${e.message}). Use Mark handled to finish`); }
+    }
+    return `Lead status set to ${STATUS[status].text}`;
+  });
+}
+
+/* ====================== example data ====================== */
+function demoData() {
+  const iso = d => d.toISOString().slice(0, 10);
+  const today = new Date(); today.setHours(9, 0, 0, 0);
+  const daily = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today); d.setDate(d.getDate() - i);
+    const we = d.getDay() === 0 || d.getDay() === 6;
+    const sent = we ? 0 : Math.min(18, 4 + Math.floor((29 - i) / 4) * 2);
+    daily.push({ day: iso(d), sent, replies: we ? 0 : [0, 1, 0, 2, 1, 0, 1][i % 7] + (sent > 12 && i % 3 === 0 ? 1 : 0) });
+  }
+  const L = [
+    ["Umoja Savings SACCO", "info@umojasavings.co.ke", "sacco", "replied", 1], ["Bidii Teachers SACCO", "admin@bidiisacco.co.ke", "sacco", "meeting", 2],
+    ["Mwangaza Microfinance", "hello@mwangazamfi.co.ke", "microfinance", "replied", 1], ["Greenhill Academy", "office@greenhill.ac.ke", "school", "replied", 2],
+    ["St. Peter's Parish, Kasarani", "stpeterskasarani@gmail.com", "church", "sent", 2], ["Pwani Boda Boda SACCO Society Limited", "info@pwanibodasacco.co.ke", "sacco", "sent", 3],
+    ["Nuru Medical Centre", "care@nurumedical.co.ke", "health", "replied", 1], ["Haraka Couriers", "ops@harakacouriers.co.ke", "transport", "unsubscribed", 1],
+    ["Elimu Girls High School", "principal@elimugirls.sc.ke", "school", "sent", 1], ["Tumaini Credit Ltd", "support@tumainicredit.co.ke", "microfinance", "bounced", 1],
+    ["Imara Farmers Co-operative", "info@imaracoop.co.ke", "sacco", "verified", 0], ["Baraka Chapel, Thika", "barakachapel@gmail.com", "church", "replied", 1],
+    ["Kilele Junior Academy", "info@kileleacademy.ac.ke", "school", "verified", 0], ["Fanaka Capital", "hello@fanakacapital.co.ke", "microfinance", "sent", 2],
+    ["Pakua Delivery", "team@pakua.example", "delivery_app", "new", 0], ["Afya Bora Clinic", "afyaboraclinic@gmail.com", "health", "client", 2],
+  ];
+  const leads = L.map((r, i) => ({ id: i + 1, company: r[0], email: r[1], industry: r[2], status: r[3], step: r[4], last: r[4] ? daily[29 - (i * 3) % 20].day : daily[29].day }));
+  const R = [
+    [1, "interested", "Wants a visit to their Ngara office on Thursday at 10am.", "Hi Florence,\n\nThanks for reaching out. We send loan reminders by hand at the moment and it takes our team a lot of time. Please come by our office in Ngara on Thursday at 10am and we can talk.\n\nRegards,\nGrace W.\nOperations, Umoja Savings SACCO", 1, false],
+    [3, "question", "Asks for the price per SMS for about 6,000 borrowers.", "Hello,\n\nWhat is your rate per SMS? We have roughly 6,000 borrowers and send repayment reminders weekly.\n\nThanks,\nBrian", 5, false],
+    [4, "question", "Asks whether messages can show the school's name instead of a number.", "Good afternoon,\n\nCan the SMS come from 'GREENHILL' instead of a number? Parents ignore unknown numbers.\n\nDeputy Principal\nGreenhill Academy", 9, false],
+    [12, "needs_review", "Short reply in Swahili saying they will discuss with the committee next week. Unclear if interested.", "Tutaongea na kamati wiki ijayo.\n\nMch. Kamau", 20, false],
+    [7, "interested", "Interested in appointment reminders; asks for a call tomorrow.", "Hi, yes we are interested in appointment reminders for our patients. Call me tomorrow on the clinic line.\n\nDr. Otieno", 26, false],
+    [2, "interested", "Agreed to meet next Tuesday at 2pm.", "Next Tuesday works. See you at 2pm.\n\nJ. Njoroge", 50, true],
+    [16, "interested", "Wants to start with 2,000 messages a month.", "We'd like to start with about 2,000 messages a month. Please send the onboarding details.", 80, true],
+    [8, "unsubscribe", "Asked to be removed from the mailing list.", "Please unsubscribe me", 60, true],
+    [5, "out_of_office", "Automatic reply: office closed until Monday.", "Thank you for your email. The parish office is closed until Monday.", 30, true],
+  ];
+  const replies = R.map((r, i) => { const l = leads.find(x => x.id === r[0]);
+    return { id: i + 1, lead_id: r[0], company: l.company, industry: l.industry, from_email: l.email, subject: "Re: A quick chat about SMS for " + l.company,
+      label: r[1], summary: r[2], body: r[3], received_at: new Date(Date.now() - r[4] * 3600000).toISOString(), handled: r[5] }; });
+  return { daily, leads, replies,
+    statusCounts: { new: 14, verified: 12, sent: 109, replied: 14, meeting: 3, client: 2, invalid: 2, bounced: 4, unsubscribed: 3 },
+    niches: [
+      { industry: "sacco", leads: 61, sent: 52, delivered: 51, replies: 8, interested: 4 }, { industry: "school", leads: 44, sent: 38, delivered: 37, replies: 5, interested: 2 },
+      { industry: "microfinance", leads: 29, sent: 24, delivered: 22, replies: 3, interested: 1 }, { industry: "church", leads: 21, sent: 16, delivered: 16, replies: 2, interested: 1 },
+      { industry: "health", leads: 8, sent: 7, delivered: 7, replies: 2, interested: 2 }, { industry: "transport", leads: 9, sent: 9, delivered: 9, replies: 0, interested: 0 },
+      { industry: "delivery_app", leads: 3, sent: 0, delivered: 0, replies: 0, interested: 0 } ],
+    bot: { last_check: new Date(Date.now() - 4 * 60000).toISOString(), daily_limit: 20, sent_today: 12 } };
+}
+
+/* ======================== chrome ======================== */
+function inboxState() {
+  const lc = toDate(S.data?.bot?.last_check);
+  if (S.mode === "demo") return { live: false, c: "var(--warn)", text: "Example data", when: "" };
+  if (!lc) return { live: false, c: "var(--warn)", text: "Inbox not checked yet", when: "" };
+  const m = (Date.now() - lc) / 60000;
+  if (m <= INBOX_OK_MIN) return { live: true, c: "var(--pos)", text: "Inbox monitoring", when: ago(lc) };
+  if (m <= INBOX_WARN_MIN) return { live: false, c: "var(--warn)", text: "Inbox checked", when: ago(lc) };
+  return { live: false, c: "var(--neg)", text: "Inbox not checked", when: `since ${shortDate(lc)}` };
+}
+function navHTML(compact) {
+  const n = S.data ? S.data.replies.filter(needsAction).length : 0;
+  return NAV.map(x => `<a class="navlink" href="#${x.view}" ${S.view === x.view ? 'aria-current="page"' : ""}>${ico(x.icon)}<span class="lbl">${x.label}</span>
+    ${x.view === "replies" && n ? `<span class="badge tnum" aria-label="${n} need action">${n}</span>` : compact ? "" : `<span class="keys" aria-hidden="true"><span class="kbd">G</span><span class="kbd">${x.key}</span></span>`}</a>`).join("");
+}
+function botCardHTML() {
+  if (!S.data) return `<div class="panel botcard"><div class="sk" style="height:12px;width:70%"></div><div class="sk" style="height:12px;width:90%"></div></div>`;
+  const f = inboxState(), b = S.data.bot, p = Math.min(100, (b.sent_today / Math.max(1, b.daily_limit)) * 100);
+  return `<div class="panel botcard" title="Shows when replies were last checked, not whether sending works.">
+    <div class="botrow"><span class="pulse ${f.live ? "live" : ""}" style="--c:${f.c}"><i></i><i></i></span><b>${f.text}</b><span class="when tnum">${f.when}</span></div>
+    <div><div class="botrow" style="margin-bottom:6px"><span style="color:var(--fg-2)">Sent today</span><b class="tnum" style="margin-left:auto">${fmtNum(b.sent_today)} / ${fmtNum(b.daily_limit)}</b></div>
+    <div class="bar" role="meter" aria-label="Emails sent today" aria-valuemin="0" aria-valuemax="${b.daily_limit}" aria-valuenow="${b.sent_today}"><span style="width:${p}%"></span></div></div></div>`;
+}
+function renderChrome() {
+  $("#sidenav").innerHTML = navHTML(false);
+  $("#mnav").innerHTML = navHTML(true);
+  $("#botcard").innerHTML = botCardHTML();
+  $("#mbot").innerHTML = `<p class="eyebrow">Bot</p>${botCardHTML()}`;
+  const dark = currentTheme() === "dark";
+  const themeBtn = `<button class="btn sm" data-act="theme" aria-label="Switch to ${dark ? "light" : "dark"} mode">${ico(dark ? "sun" : "moon", "sm")}${dark ? "Light mode" : "Dark mode"}</button>`;
+  $("#mtheme").innerHTML = ico(dark ? "sun" : "moon");
+  $("#mtheme").setAttribute("aria-label", `Switch to ${dark ? "light" : "dark"} mode`);
+  $("#mrefresh").innerHTML = ico("refresh", S.refreshing ? "spin" : "");
+  const current = NAV.find(n => n.view === S.view)?.label || "LeadBot";
+  const fresh = S.mode === "loading" ? "Loading…" : S.mode === "demo" ? "Not connected"
+    : S.refreshError ? `Refresh failed · showing ${clock(S.lastOk)}` : `Refreshed ${ago(S.lastOk)}`;
+  $("#topbar").innerHTML = `
+    <nav class="crumb" aria-label="Breadcrumb"><span>TalkSasa</span><span>/</span><b>${current}</b></nav>
+    <span class="fresh ${S.refreshError ? "bad" : ""}">${fresh}</span>
+    <div class="right">
+      ${S.mode === "demo" ? `<span class="samplebadge">Sample data</span>` : ""}
+      <button class="searchbtn topsearch" data-act="palette">${ico("search", "sm")}Search or jump to…<span class="kbd">⌘K</span></button>
+      ${themeBtn}
+      <button class="btn sm" data-act="refresh" ${S.refreshing ? "disabled" : ""}>${ico(S.refreshing ? "loader" : "refresh", "sm" + (S.refreshing ? " spin" : ""))}Refresh</button>
+    </div>`;
+}
+function notice() {
+  if (S.mode === "demo") return `<div class="notice warn" role="status">${ico("alert")}<div class="txt"><b>Showing sample data</b><span>LeadBot couldn't reach its API, so nothing here is real and actions aren't saved. Start it with <code>uvicorn web:app --host 127.0.0.1 --port 8000</code> and open <code>http://127.0.0.1:8000</code>.</span></div><button class="btn sm" data-act="refresh">Try again</button></div>`;
+  if (S.refreshError) return `<div class="notice neg" role="alert">${ico("alert")}<div class="txt"><b>Couldn't refresh</b><span>Everything below is from ${clock(S.lastOk)} and may be out of date. Check that the API is still running.</span></div><button class="btn sm" data-act="refresh">Try again</button></div>`;
+  return "";
+}
+
+/* ========================= Today ========================= */
+function totals() {
+  const n = S.data.niches, sc = S.data.statusCounts, sum = k => n.reduce((s, x) => s + (x[k] || 0), 0);
+  const emailed = sum("sent"), reach = sum("delivered");
+  return { emailed, reach, replies: sum("replies"), interested: sum("interested"), bounced: emailed - reach, meetings: sc.meeting || 0, clients: sc.client || 0 };
+}
+function greeting() { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; }
+function spark(values) {
+  const max = Math.max(...values, 1), w = 100, h = 28;
+  const pts = values.map((v, i) => `${(i / Math.max(1, values.length - 1)) * w},${h - (v / max) * (h - 2) - 1}`).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${h} ${pts} ${w},${h}" fill="var(--primary)" opacity=".08"/><polyline points="${pts}" fill="none" stroke="var(--primary)" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+}
+function renderToday() {
+  const D = S.data, t = totals(), b = D.bot;
+  const queue = D.replies.filter(needsAction).sort((a, c) => ACTION_ORDER.indexOf(a.label) - ACTION_ORDER.indexOf(c.label) || c._d - a._d);
+  const n = queue.length;
+  const bounce = pct(t.bounced, t.emailed);
+  const bHint = bounce == null ? `<p class="hint">No emails sent yet</p>` : bounce < 2 ? `<p class="hint">${t.bounced} bounced · within the 2% guide</p>`
+    : `<p class="hint ${bounce < 5 ? "warn" : "neg"}">${t.bounced} bounced · above 2%, check list quality</p>`;
+  const reply30 = D.daily.reduce((s, d) => s + d.replies, 0);
+  return `
+    <header class="hero">
+      <p class="date">${new Date().toLocaleDateString("en-KE", { weekday: "long", day: "numeric", month: "long" })} · Nairobi</p>
+      <h1>${greeting()}, ${OPERATOR}</h1>
+      <p>${n ? `<b>${n} ${n === 1 ? "reply needs" : "replies need"}</b> your attention. Interested prospects are listed first.` : "You're all caught up. New interested replies will appear here."}</p>
+      <div class="cta"><a class="btn sm primary" href="#replies">Open replies ${ico("arrowR", "sm")}</a><a class="btn sm" href="#organisations">Browse organisations</a></div>
+    </header>
+    <div class="stack" style="margin-top:32px">
+      ${notice()}
+      <section aria-labelledby="h-needs">
+        <div class="shead"><div><h2 id="h-needs">Needs your reply</h2><p>Interested prospects first, then the newest questions.</p></div>
+          <a class="textlink" href="#replies">View all replies ${ico("arrowR", "sm")}</a></div>
+        <div class="panel" style="overflow:hidden">
+          ${n ? `<ul class="qlist">${queue.slice(0, 6).map(r => `<li><a class="qrow" href="#replies-${r.id}">
+              <span class="who">${r.label === "interested" ? `<span class="dot" aria-hidden="true"></span>` : ""}<b class="truncate">${esc(r.company || r.from_email)}</b></span>
+              <span>${tag(r.label)}</span><span class="sum truncate">${esc(r.summary)}</span><time class="tnum" datetime="${esc(r.received_at)}">${ago(r._d)}</time>${ico("chevR")}</a></li>`).join("")}</ul>`
+          : `<div class="empty"><b>Nothing needs your reply</b><p>When prospects respond with interest or questions, they'll appear here. Check for new replies with <code>python main.py inbox</code>.</p></div>`}
+        </div>
+      </section>
+
+      ${S.sentToday ? `<section aria-labelledby="h-sent">
+        <div class="shead"><div><h2 id="h-sent">Sent today</h2><p>${S.sentToday.length ? `${S.sentToday.length} ${S.sentToday.length === 1 ? "email" : "emails"} so far, out of a daily limit of ${fmtNum(D.bot.daily_limit)}` : "Nothing sent yet today"}</p></div></div>
+        <div class="panel" style="overflow:hidden">${S.sentToday.length ? `<ul class="stoday">${S.sentToday.slice(0, 8).map(e => `<li><button data-org="${e.lead_id}">
+            <b class="truncate">${esc(e.company)}</b><span class="step">${stepName(e.step || 1)}</span><span class="ind">${esc(industryName(e.industry))}</span>${ico("chevR")}</button></li>`).join("")}</ul>
+            ${S.sentToday.length > 8 ? `<p class="small" style="padding:10px 20px;border-top:1px solid var(--line)">and ${S.sentToday.length - 8} more</p>` : ""}`
+          : `<div class="empty" style="padding:28px 24px"><p style="margin:0 auto">Emails LeadBot sends today will be listed here. Send a batch with <code>python main.py send</code>.</p></div>`}</div>
+      </section>` : ""}
+
+      <section aria-labelledby="h-perf">
+        <div class="shead"><div><h2 id="h-perf">Outreach performance</h2><p>All time · ${fmtNum(t.emailed)} organisations emailed · replies exclude bounces and auto-replies</p></div></div>
+        <div class="kpis">
+          <div class="panel kpi"><p class="lbl">Reply rate</p><p class="val tnum">${fmtPct(pct(t.replies, t.reach))}</p>
+            <p class="hint">${fmtNum(t.replies)} replies from ${fmtNum(t.reach)} reachable organisations</p>
+            <div class="spark">${spark(D.daily.map(d => d.replies))}<small>${fmtNum(reply30)} replies in the last 30 days</small></div></div>
+          <div class="panel kpi"><p class="lbl">Interested prospects</p><p class="val tnum">${fmtNum(t.interested)}</p>
+            <p class="hint">${fmtPct(pct(t.interested, t.reach))} of reachable organisations</p></div>
+          <div class="panel kpi"><p class="lbl">Meetings</p><p class="val tnum">${fmtNum(t.meetings)}</p>
+            <p class="hint">${fmtNum(t.clients)} ${t.clients === 1 ? "lead" : "leads"} became ${t.clients === 1 ? "a client" : "clients"}</p></div>
+          <div class="panel kpi"><p class="lbl">Bounce rate</p><p class="val tnum">${fmtPct(bounce)}</p>${bHint}</div>
+        </div>
+      </section>
+
+      <div class="split">
+        <section aria-labelledby="h-act">
+          <div class="shead"><div><h2 id="h-act">Outreach activity</h2><p>Last 30 days · each chart has its own scale</p></div>
+            <div class="legend"><span><i class="sw" style="background:var(--chart-sent)"></i>Sent <b class="tnum">${fmtNum(D.daily.reduce((s, d) => s + d.sent, 0))}</b></span>
+              <span><i class="sw" style="background:var(--chart-reply);border-radius:50%"></i>Replies <b class="tnum">${fmtNum(reply30)}</b></span></div></div>
+          <div class="panel chartpanel"><div id="activity" style="position:relative"></div></div>
+        </section>
+        <section aria-labelledby="h-pipe">
+          <div class="shead"><div><h2 id="h-pipe">Lead pipeline</h2><p>Where every organisation currently sits</p></div></div>
+          <div class="panel">${["progress", "responded", "stopped"].map(g => {
+            const keys = STATUS_ORDER.filter(k => STATUS[k].group === g), tot = keys.reduce((s, k) => s + (D.statusCounts[k] || 0), 0);
+            return `<div class="pgroup"><h3><span>${{ progress: "In progress", responded: "Responded", stopped: "Stopped" }[g]}</span><span class="tnum">${fmtNum(tot)}</span></h3>
+              <div class="pgrid">${keys.map(k => `<div><b class="tnum">${fmtNum(D.statusCounts[k] || 0)}</b><span>${STATUS[k].text}</span></div>`).join("")}</div></div>`; }).join("")}</div>
+        </section>
+      </div>
+
+      <section aria-labelledby="h-ind">
+        <div class="shead"><div><h2 id="h-ind">Industry performance</h2><p>Which sectors are responding. Under ${SMALL_SAMPLE} reachable organisations is shown as a small sample.</p></div></div>
+        <div class="panel tscroll">${renderIndustries()}</div>
+      </section>
+    </div>`;
+}
+function th(scope, key, text, right) {
+  const st = S[scope], on = st.sort === key;
+  return `<th scope="col" class="${right ? "r" : ""}" aria-sort="${on ? (st.dir === "asc" ? "ascending" : "descending") : "none"}"><button class="sort" data-sort="${scope}:${key}">${text}${ico(on ? (st.dir === "asc" ? "up" : "down") : "down", on ? "" : "off")}</button></th>`;
+}
+function renderIndustries() {
+  const rows = S.data.niches.map(n => ({ ...n, name: industryName(n.industry), reach: n.delivered, rate: pct(n.replies, n.delivered) }));
+  if (!rows.length) return `<div class="empty"><b>No industry data yet</b><p>Industries appear once organisations are discovered.</p></div>`;
+  const { sort, dir } = S.ind;
+  rows.sort((a, b) => {
+    if (sort === "rate" && (a.reach < SMALL_SAMPLE) !== (b.reach < SMALL_SAMPLE)) return a.reach < SMALL_SAMPLE ? 1 : -1;
+    const v = r => sort === "name" ? r.name.toLowerCase() : sort === "rate" ? (r.rate ?? -1) : r[sort];
+    return (v(a) < v(b) ? -1 : v(a) > v(b) ? 1 : 0) * (dir === "asc" ? 1 : -1);
+  });
+  const max = Math.max(1, ...rows.filter(r => r.reach >= SMALL_SAMPLE).map(r => r.rate || 0));
+  return `<table style="min-width:680px"><thead><tr>${th("ind", "name", "Industry")}${th("ind", "leads", "Organisations", 1)}${th("ind", "reach", "Reachable", 1)}${th("ind", "replies", "Replies", 1)}${th("ind", "rate", "Reply rate")}${th("ind", "interested", "Interested", 1)}</tr></thead>
+    <tbody class="tnum">${rows.map(r => `<tr><td style="font-weight:500">${esc(r.name)}</td><td class="r" style="color:var(--fg-2)">${fmtNum(r.leads)}</td><td class="r" style="color:var(--fg-2)">${fmtNum(r.reach)}</td><td class="r">${fmtNum(r.replies)}</td>
+      <td>${r.reach === 0 ? `<span class="small">Not emailed yet</span>` : r.reach < SMALL_SAMPLE ? `<span class="small">Small sample · n=${r.reach}</span>`
+        : `<div class="ratecell"><span>${fmtPct(r.rate)}</span><span class="bar"><span style="width:${((r.rate || 0) / max * 100).toFixed(0)}%"></span></span></div>`}</td>
+      <td class="r" style="font-weight:500">${fmtNum(r.interested)}</td></tr>`).join("")}</tbody></table>`;
+}
+function drawActivity() {
+  const host = $("#activity"); if (!host) return;
+  const daily = S.data.daily;
+  if (!daily.some(d => d.sent || d.replies)) { host.innerHTML = `<div class="empty"><b>No activity yet</b><p>Daily emails and replies will chart here once outreach begins. Send a batch with <code>python main.py send</code>.</p></div>`; return; }
+  const W = Math.max(240, host.clientWidth), H = 100, L = 30, R = 2, T = 6, B = 2, AX = 22, n = daily.length, iw = (W - L - R) / n, bw = Math.max(2, Math.min(14, iw - 3));
+  const nice = m => { const s = m <= 4 ? 1 : m <= 10 ? 2 : m <= 25 ? 5 : m <= 50 ? 10 : 25; return Math.max(s, Math.ceil(m / s) * s); };
+  const font = `font-size="11" fill="var(--fg-3)" font-family="var(--font)"`;
+  const row = (key, color, axis, h0) => {
+    const top = nice(Math.max(1, ...daily.map(d => d[key]))), h = h0 + (axis ? AX : 0), y = v => T + (h0 - T - B) * (1 - v / top);
+    let s = `<svg width="${W}" height="${h}" viewBox="0 0 ${W} ${h}" aria-hidden="true">`;
+    [top, top / 2].forEach(v => { s += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/>`; });
+    s += `<line x1="${L}" x2="${W - R}" y1="${y(0)}" y2="${y(0)}" stroke="var(--input)"/>`;
+    [0, top].forEach(v => { s += `<text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" ${font}>${v}</text>`; });
+    daily.forEach((d, i) => { if (!d[key]) return; const x = L + i * iw + (iw - bw) / 2, yt = y(d[key]), r = Math.min(2, (y(0) - yt) / 2);
+      s += `<path d="M${x},${y(0)} V${yt + r} Q${x},${yt} ${x + r},${yt} H${x + bw - r} Q${x + bw},${yt} ${x + bw},${yt + r} V${y(0)} Z" fill="${color}"/>`; });
+    if (axis) [0, 7, 14, 21, n - 1].filter(i => i < n).forEach(i => { const a = i === 0 ? "start" : i === n - 1 ? "end" : "middle", x = i === 0 ? L : i === n - 1 ? W - R : L + i * iw + iw / 2;
+      s += `<text x="${x}" y="${h0 + 16}" text-anchor="${a}" ${font}>${shortDate(toDate(daily[i].day))}</text>`; });
+    return s + `<rect class="xh" x="0" y="${T}" width="${Math.max(2, iw - 1)}" height="${y(0) - T}" fill="var(--hover)" visibility="hidden"/></svg>`;
+  };
+  host.innerHTML = `<div class="series"><div class="sh"><b>Emails sent per day</b><span>including follow-ups</span></div><div class="chartbox">${row("sent", "var(--chart-sent)", false, 110)}</div></div>
+    <div class="series"><div class="sh"><b>Replies per day</b><span>excluding bounces and auto-replies</span></div><div class="chartbox">${row("replies", "var(--chart-reply)", true, 70)}</div></div>
+    <div class="tip" hidden></div>
+    <table class="sr"><caption>Emails sent and replies per day</caption><thead><tr><th>Day</th><th>Sent</th><th>Replies</th></tr></thead><tbody>${daily.map(d => `<tr><td>${d.day}</td><td>${d.sent}</td><td>${d.replies}</td></tr>`).join("")}</tbody></table>`;
+  const tip = host.querySelector(".tip"), svgs = [...host.querySelectorAll("svg")];
+  svgs.forEach(s => s.querySelector(".xh").parentNode.insertBefore(s.querySelector(".xh"), s.querySelector("line").nextSibling));
+  const move = e => {
+    const rect = svgs[0].getBoundingClientRect(), i = Math.max(0, Math.min(n - 1, Math.floor((e.clientX - rect.left - L) / iw))), d = daily[i];
+    svgs.forEach(s => { const x = s.querySelector(".xh"); x.setAttribute("x", L + i * iw); x.setAttribute("visibility", "visible"); });
+    tip.innerHTML = `<p style="font-weight:500;margin-bottom:4px">${toDate(d.day).toLocaleDateString("en-KE", { weekday: "short", day: "numeric", month: "short" })}</p>
+      <div class="r"><span>Sent</span><b class="tnum">${d.sent}</b></div><div class="r"><span>Replies</span><b class="tnum" style="color:var(--primary)">${d.replies}</b></div>`;
+    tip.hidden = false;
+    const hr = host.getBoundingClientRect(); let left = rect.left - hr.left + L + i * iw + iw + 10;
+    if (left + 180 > hr.width) left -= 200 + iw;
+    tip.style.left = Math.max(0, left) + "px"; tip.style.top = "20px";
+  };
+  const leave = () => { tip.hidden = true; svgs.forEach(s => s.querySelector(".xh").setAttribute("visibility", "hidden")); };
+  svgs.forEach(s => { s.addEventListener("pointermove", move); s.addEventListener("pointerleave", leave); });
+}
+
+/* ======================== Replies ======================== */
+function filteredReplies() {
+  const st = S.replies, q = st.q.trim().toLowerCase();
+  return S.data.replies.filter(r => st.tab === "all" || needsAction(r)).filter(r => !st.label || r.label === st.label)
+    .filter(r => !q || [r.company, r.from_email, r.summary, r.body, r.subject].join(" ").toLowerCase().includes(q))
+    .sort((a, b) => b._d - a._d);
+}
+function renderReplies() {
+  const st = S.replies, list = filteredReplies(), all = S.data.replies;
+  if (!list.some(r => r.id === st.selected) && !(st.reading && replyById(st.selected))) st.selected = mobile() ? null : list[0]?.id ?? null;
+  const actionCount = all.filter(needsAction).length, filtersOn = st.q || st.label;
+  return `
+    <header class="pagehead ${st.reading ? "hide-reading" : ""}"><h1>Replies</h1><p>Review what prospects said. <span class="shortcuts" style="color:var(--fg-3)">Shortcuts: J next · K previous · H mark handled</span></p></header>
+    ${notice() ? `<div style="margin-bottom:24px">${notice()}</div>` : ""}
+    <div class="panel inbox ${st.reading ? "reading" : ""}">
+      <div class="ilist">
+        <div class="itools">
+          <div class="tabs" role="tablist" aria-label="Show">
+            <button role="tab" data-tab="action" aria-selected="${st.tab === "action"}" class="tnum">Needs action · ${actionCount}</button>
+            <button role="tab" data-tab="all" aria-selected="${st.tab === "all"}" class="tnum">All · ${all.length}</button>
+          </div>
+          <div class="ifilters">
+            <label class="withicon"><span class="sr">Search replies</span>${ico("search")}<input class="field" type="search" id="rq" placeholder="Search" value="${esc(st.q)}" autocomplete="off"></label>
+            <label><span class="sr">Reply type</span><select class="field" id="rlabel"><option value="">All types</option>${Object.entries(LABEL).map(([k, v]) => `<option value="${k}" ${st.label === k ? "selected" : ""}>${v.text}</option>`).join("")}</select></label>
+          </div>
+          ${filtersOn ? `<div class="icount tnum">${list.length} ${list.length === 1 ? "reply" : "replies"}<button class="textlink" data-act="clear-replies">Clear filters</button></div>` : ""}
+        </div>
+        ${list.length ? `<ul class="rlist" id="rlist" role="listbox" aria-label="Replies">${list.map(r => { const a = needsAction(r), on = r.id === st.selected; return `<li>
+            <button class="ritem ${a ? "act" : ""}" role="option" aria-selected="${on}" data-rid="${r.id}" tabindex="${on ? 0 : -1}">
+              <span class="top"><span class="dot ${a ? "on" : ""}" ${a ? 'aria-label="Needs action"' : ""}></span><span class="name truncate">${esc(r.company || r.from_email)}</span><time class="tnum">${ago(r._d)}</time></span>
+              <span class="sum">${esc(r.summary)}</span>
+              <span class="tags">${tag(r.label)}${r.handled ? `<span class="handled">${ico("check", "sm")}Handled</span>` : ""}</span>
+            </button></li>`; }).join("")}</ul>`
+          : `<div class="empty"><b>${all.length ? (st.tab === "action" && !filtersOn ? "You're up to date" : "No replies match") : "No replies yet"}</b>
+              <p>${all.length ? (st.tab === "action" && !filtersOn ? "Nothing needs action right now." : "Try a different search or filter.") : "Replies appear here after the bot checks your inbox. Run python main.py inbox."}</p>
+              ${filtersOn ? `<button class="btn sm" data-act="clear-replies" style="margin-top:12px">Clear filters</button>` : st.tab === "action" && all.length ? `<button class="btn sm" data-tab="all" style="margin-top:12px">Show all replies</button>` : ""}</div>`}
+      </div>
+      <div class="reader" id="reader">${renderReader(replyById(st.selected))}</div>
+    </div>`;
+}
+function renderReader(r) {
+  if (!r) return `<div class="empty" style="margin:auto"><b>Select a reply</b><p>Choose a message from the list, or press J to start.</p></div>`;
+  const lead = leadById(r.lead_id), st = lead?.status, p = S.pending && S.pending.id === r.id ? S.pending.kind : null, busy = !!S.pending;
+  const err = S.actionError?.id === r.id ? S.actionError.msg : null, ok = !err && S.actionOk?.id === r.id ? S.actionOk.msg : null;
+  const spin = ico("loader", "spin");
+  return `<article style="display:flex;flex-direction:column;min-height:100%">
+    <div class="rhead">
+      <button class="btn ghost back" data-act="back" style="color:var(--primary);padding:0">${ico("arrowL")}Back to replies</button>
+      <div class="rtitle"><h2>${esc(r.company || r.from_email)}</h2>${tag(r.label)}</div>
+      <dl class="facts"><dt>From</dt><dd>${esc(r.from_email)}</dd><dt>Industry</dt><dd>${esc(industryName(r.industry))}</dd>
+        <dt>Lead status</dt><dd>${lead ? statusTag(st) : `<span style="color:var(--fg-3)">Not linked to a lead</span>`}</dd><dt>Received</dt><dd class="tnum">${r._d ? esc(fullDate(r._d)) : ""}</dd></dl>
+      <div class="actions">
+        <button class="btn ${r.handled ? "" : "primary"}" data-act="handled" ${busy ? "disabled" : ""} aria-keyshortcuts="h">${p === "handled" ? spin : r.handled ? "" : ico("check")}${r.handled ? "Move back to needs action" : "Mark handled"}</button>
+        ${lead && st !== "meeting" && st !== "client" ? `<button class="btn" data-act="meeting" ${busy ? "disabled" : ""}>${p === "meeting" ? spin : ""}Set meeting</button>` : ""}
+        ${lead ? (st === "client" ? `<span class="won">${ico("check")}Client</span>` : `<button class="btn" data-act="client" ${busy ? "disabled" : ""}>${p === "client" ? spin : ""}Mark as client</button>`) : ""}
+        <button class="btn ghost" data-act="copy">${ico("copy")}Copy email</button>
+      </div>
+      <div class="feedback" aria-live="polite">${err ? `<p class="err" role="alert">Couldn't save. ${esc(err)}</p>` : ok ? `<p class="ok">${esc(ok)}</p>` : ""}</div>
+    </div>
+    <div class="rbody">
+      <section class="ai" aria-label="LeadBot's reading"><p class="who">${ico("sparkles", "sm")}LeadBot's reading · AI-generated <span>· may be wrong, check the original</span></p><p>${esc(r.summary || "No summary was produced.")}</p></section>
+      ${lead ? `<details class="sentsec" data-sent="${lead.id}" ${S.sentOpen.has(lead.id) ? "open" : ""}><summary>${ico("send", "sm")}What you sent them <span class="n">· ${seqText(lead.step)}</span>${ico("chevR", "sm chev")}</summary>
+        <div>${S.sentOpen.has(lead.id) ? timelineHTML(lead.id, { outOnly: true }) : ""}</div></details>` : ""}
+      <section class="orig" aria-label="Original email"><p class="lbl">Original email</p><h3>${esc(r.subject || "(no subject)")}</h3><div class="letter">${esc(r.body || "(empty message)")}</div></section>
+    </div></article>`;
+}
+
+/* ===================== Organisations ===================== */
+function filteredOrgs() {
+  const st = S.orgs, q = st.q.trim().toLowerCase();
+  const rows = S.data.leads.filter(l => (!q || (l.company + " " + l.email).toLowerCase().includes(q)) && (!st.industry || l.industry === st.industry) && (!st.status || l.status === st.status));
+  const v = l => st.sort === "company" ? (l.company || "").toLowerCase() : st.sort === "industry" ? industryName(l.industry).toLowerCase()
+    : st.sort === "status" ? STATUS_ORDER.indexOf(l.status) : st.sort === "step" ? (l.step || 0) : (l._last ? +l._last : 0);
+  return rows.sort((a, b) => (v(a) < v(b) ? -1 : v(a) > v(b) ? 1 : 0) * (st.dir === "asc" ? 1 : -1));
+}
+const seqHTML = l => `<div class="seq"><div class="seqbars" aria-hidden="true">${[1, 2, 3].map(i => `<i class="${(l.step || 0) >= i ? "on" : ""}"></i>`).join("")}</div><p>${seqText(l.step)}</p></div>`;
+function renderOrgs() {
+  const st = S.orgs, D = S.data, rows = filteredOrgs(), on = st.q || st.industry || st.status;
+  const inds = [...new Set(D.leads.map(l => l.industry))].sort((a, b) => industryName(a).localeCompare(industryName(b)));
+  const latest = new Map(); D.replies.slice().sort((a, b) => a._d - b._d).forEach(r => { if (r.lead_id != null && r.label !== "bounce") latest.set(r.lead_id, r.id); });
+  return `
+    <header class="pagehead"><h1>Organisations</h1><p>Every prospect LeadBot has discovered, and where outreach stands. Select one to see every email sent and every reply.</p></header>
+    ${notice() ? `<div style="margin-bottom:24px">${notice()}</div>` : ""}
+    <div class="ofilters">
+      <label class="withicon"><span class="sr">Search organisations</span>${ico("search")}<input class="field" type="search" id="oq" placeholder="Search name or email" value="${esc(st.q)}" autocomplete="off"></label>
+      <label><span class="sr">Industry</span><select class="field" id="oind"><option value="">All industries</option>${inds.map(k => `<option value="${esc(k)}" ${st.industry === k ? "selected" : ""}>${esc(industryName(k))}</option>`).join("")}</select></label>
+      <label><span class="sr">Lead status</span><select class="field" id="ost"><option value="">All statuses</option>${STATUS_ORDER.map(k => `<option value="${k}" ${st.status === k ? "selected" : ""}>${STATUS[k].text}</option>`).join("")}</select></label>
+      <button class="btn ghost" data-act="clear-orgs" ${on ? "" : "disabled"}>Clear filters</button>
+    </div>
+    <p class="ocount tnum">${fmtNum(rows.length)} of ${fmtNum(D.leads.length)} organisations</p>
+    <div class="panel" style="overflow:hidden">
+      ${!D.leads.length ? `<div class="empty"><b>No organisations yet</b><p>Find your first leads with <code>python main.py discover sacco --max 10</code>.</p></div>`
+      : !rows.length ? `<div class="empty"><b>No organisations match</b><p>Try clearing a filter or searching a different name.</p></div>`
+      : `<div class="tscroll"><table><thead><tr>${th("orgs", "company", "Organisation")}${th("orgs", "industry", "Industry")}${th("orgs", "status", "Lead status")}${th("orgs", "step", "Outreach sequence")}${th("orgs", "last", "Last activity")}<th><span class="sr">Reply</span></th></tr></thead>
+        <tbody>${rows.map(l => `<tr class="orgrow" data-org="${l.id}" tabindex="0" aria-label="Open ${esc(l.company)}"><td><div class="orgcell"><b class="truncate" title="${esc(l.company)}">${esc(l.company)}</b><span class="truncate" title="${esc(l.email)}">${esc(l.email)}</span></div></td>
+          <td style="color:var(--fg-2)">${esc(industryName(l.industry))}</td><td>${statusTag(l.status)}</td><td style="padding-block:10px">${seqHTML(l)}</td>
+          <td class="tnum" style="font-size:13px;color:var(--fg-2)">${l._last ? ago(l._last) : ""}</td>
+          <td class="r">${latest.has(l.id) ? `<a class="textlink" href="#replies-${latest.get(l.id)}">View reply ${ico("arrowR", "sm")}</a>` : ""}</td></tr>`).join("")}</tbody></table></div>
+        <ul class="cards">${rows.map(l => `<li class="orgrow" data-org="${l.id}"><div class="l1"><div><b class="truncate">${esc(l.company)}</b><span class="truncate">${esc(l.email)}</span></div>${statusTag(l.status)}</div>
+          <div class="l2">${seqHTML(l)}<span class="tnum">${esc(industryName(l.industry))} · ${l._last ? ago(l._last) : ""}</span></div>
+          ${latest.has(l.id) ? `<a class="btn viewreply" href="#replies-${latest.get(l.id)}">View reply</a>` : ""}</li>`).join("")}</ul>`}
+    </div>`;
+}
+
+/* ===================== command palette ===================== */
+function cmdItems() {
+  const D = S.data, items = [];
+  NAV.forEach(n => items.push({ grp: "Go to", icon: n.icon, text: n.label, meta: `G ${n.key}`, run: () => { location.hash = n.view; } }));
+  if (D) {
+    D.replies.filter(needsAction).forEach(r => items.push({ grp: "Replies needing action", icon: "inbox", text: r.company || r.from_email, meta: LABEL[r.label].text, find: r.summary, run: () => { location.hash = "replies-" + r.id; } }));
+    D.leads.forEach(l => items.push({ grp: "Organisations", icon: "building", text: l.company, meta: industryName(l.industry), find: l.email, run: () => openOrg(l.id) }));
+  }
+  items.push({ grp: "Actions", icon: "refresh", text: "Refresh data", run: () => refresh({ manual: true }) });
+  items.push({ grp: "Actions", icon: currentTheme() === "dark" ? "sun" : "moon", text: "Switch theme", run: toggleTheme });
+  const q = S.cmdk.q.trim().toLowerCase();
+  return q ? items.filter(i => (i.text + " " + (i.meta || "") + " " + (i.find || "")).toLowerCase().includes(q)) : items.filter(i => i.grp !== "Organisations").concat(items.filter(i => i.grp === "Organisations").slice(0, 8));
+}
+function renderCmdk() {
+  const root = $("#cmdk-root");
+  if (!S.cmdk.open) { root.innerHTML = ""; return; }
+  const items = cmdItems(); S.cmdk.idx = Math.min(S.cmdk.idx, Math.max(0, items.length - 1));
+  let last = "", html = "";
+  items.forEach((it, i) => { if (it.grp !== last) { html += `<li class="grp" role="presentation">${it.grp}</li>`; last = it.grp; }
+    html += `<li class="opt" role="option" id="cmd-${i}" data-cmd="${i}" aria-selected="${i === S.cmdk.idx}">${ico(it.icon)}<span class="truncate">${esc(it.text)}</span>${it.meta ? `<span class="meta">${esc(it.meta)}</span>` : ""}</li>`; });
+  const existing = $("#cmdk-input");
+  if (!existing) {
+    root.innerHTML = `<div class="cmdk-back" data-cmdk-close><div class="cmdk" role="dialog" aria-modal="true" aria-label="Search">
+      <div class="in">${ico("search")}<input id="cmdk-input" placeholder="Search organisations, replies or commands…" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="cmdk-list"></div>
+      <ul id="cmdk-list" role="listbox"></ul></div></div>`;
+    $("#cmdk-input").focus();
+  }
+  $("#cmdk-list").innerHTML = items.length ? html : `<li class="none">No results.</li>`;
+  $("#cmdk-input").setAttribute("aria-activedescendant", items.length ? "cmd-" + S.cmdk.idx : "");
+  document.getElementById("cmd-" + S.cmdk.idx)?.scrollIntoView({ block: "nearest" });
+}
+function openCmdk() { S.cmdk = { open: true, q: "", idx: 0, ret: document.activeElement }; renderCmdk(); }
+function closeCmdk() { const ret = S.cmdk.ret; S.cmdk = { open: false, q: "", idx: 0 }; renderCmdk(); ret?.focus?.(); }
+function runCmd(i) { const it = cmdItems()[i]; closeCmdk(); it?.run(); }
+
+/* ===================== render & routing ===================== */
+function renderPlaceholder() {
+  return `<div style="display:grid;gap:24px"><div class="sk" style="height:28px;width:280px"></div><div class="panel" style="padding:20px;display:grid;gap:14px">${[60, 80, 70, 50].map(w => `<div class="sk" style="height:14px;width:${w}%"></div>`).join("")}</div>
+    <div class="kpis">${[0, 1, 2, 3].map(() => `<div class="panel kpi"><div class="sk" style="height:12px;width:50%"></div><div class="sk" style="height:28px;width:40%;margin-top:12px"></div></div>`).join("")}</div></div>`;
+}
+function render() {
+  renderChrome();
+  const view = $("#view");
+  if (!S.data) { view.innerHTML = renderPlaceholder(); return; }
+  const a = document.activeElement;
+  const keep = { win: window.scrollY, list: $("#rlist")?.scrollTop, reader: $("#reader")?.scrollTop, focusId: a?.id, rid: a?.dataset?.rid, act: a?.dataset?.act, s0: a?.selectionStart, s1: a?.selectionEnd };
+  view.className = "page v-" + S.view;
+  view.innerHTML = S.view === "today" ? renderToday() : S.view === "replies" ? renderReplies() : renderOrgs();
+  if (S.view === "today") drawActivity();
+  renderOverlays();
+  if (keep.list != null && $("#rlist")) $("#rlist").scrollTop = keep.list;
+  if (keep.reader != null && $("#reader")) $("#reader").scrollTop = keep.reader;
+  window.scrollTo(0, keep.win);
+  if (S.cmdk.open || (S.org.id != null && $("#drawer-root").contains(document.activeElement))) return;
+  const t = keep.focusId && keep.focusId !== "cmdk-input" ? document.getElementById(keep.focusId) : keep.rid ? document.querySelector(`.ritem[data-rid="${S.replies.selected}"]`)
+    : keep.act && view.contains(a) === false ? (document.querySelector(`#view [data-act="${keep.act}"]:not(:disabled)`) || document.querySelector('#view [data-act="handled"]')) : null;
+  if (t) { t.focus({ preventScroll: true }); if (keep.s0 != null && t.setSelectionRange) try { t.setSelectionRange(keep.s0, keep.s1); } catch (e) {} }
+}
+function route() {
+  const h = (location.hash || "#today").slice(1), m = h.match(/^replies-(\d+)$/), prev = S.view;
+  const om = h.match(/^org-(\d+)$/);
+  if (om) {
+    if (!S.lastOk) S.view = "organisations";
+    if (S.org.id !== +om[1]) S.org = { id: +om[1], ret: document.activeElement };
+    render(); if (S.data) loadTimeline(+om[1]);
+    return;
+  }
+  if (S.org.id != null) S.org = { id: null };
+  if (m) {
+    S.view = "replies"; const id = +m[1];
+    if (S.data && replyById(id) && !filteredReplies().some(x => x.id === id)) { S.replies.tab = "all"; S.replies.label = ""; S.replies.q = ""; }
+    if (mobile() && !S.replies.reading) S.replies.mobileScroll = window.scrollY;
+    S.replies.selected = id; S.replies.reading = true; S.actionError = null; S.actionOk = null;
+  } else { S.view = NAV.some(n => n.view === h) ? h : "today"; if (S.view === "replies") S.replies.reading = false; }
+  render();
+  if (prev !== S.view || (m && mobile())) window.scrollTo(0, 0);
+}
+function selectReply(id) {
+  if (mobile() && !S.replies.reading) S.replies.mobileScroll = window.scrollY;
+  S.replies.selected = id; S.replies.reading = true; S.actionError = null; S.actionOk = null;
+  history.replaceState(null, "", "#replies-" + id); render();
+  const rd = $("#reader"); if (rd) rd.scrollTop = 0;
+  document.querySelector(`.ritem[data-rid="${id}"]`)?.focus({ preventScroll: true });
+  if (mobile()) window.scrollTo(0, 0);
+}
+
+/* ========================= events ========================= */
+document.addEventListener("click", e => {
+  if (e.target.closest("[data-cmdk-close]") && !e.target.closest(".cmdk")) return closeCmdk();
+  if (e.target.classList?.contains("drawer-back")) return closeOrg();
+  const opt = e.target.closest("[data-cmd]"); if (opt) return runCmd(+opt.dataset.cmd);
+  const orgEl = e.target.closest("[data-org]");
+  if (orgEl && !e.target.closest("a, .orgrow button, .orgrow a")) { S.org.ret = orgEl; return openOrg(+orgEl.dataset.org); }
+  if (e.target.closest('[data-act="close-org-nav"]')) { S.org = { id: null }; renderOverlays(); return; }
+  const t = e.target.closest("button, a[data-act]"); if (!t) return;
+  const r = replyById(S.replies.selected);
+  if (t.dataset.rid) return selectReply(+t.dataset.rid);
+  if (t.dataset.tab) { S.replies.tab = t.dataset.tab; S.replies.selected = null; S.actionError = null; S.actionOk = null; return render(); }
+  if (t.dataset.sort) { const [scope, key] = t.dataset.sort.split(":"), st = S[scope], text = ["name", "company", "industry"].includes(key);
+    st.dir = st.sort === key ? (st.dir === "asc" ? "desc" : "asc") : (text ? "asc" : "desc"); st.sort = key; return render(); }
+  switch (t.dataset.act) {
+    case "palette": return openCmdk();
+    case "theme": return toggleTheme();
+    case "refresh": return refresh({ manual: true });
+    case "handled": return r && setHandled(r, !r.handled);
+    case "meeting": return r && setLeadStatus(r, "meeting");
+    case "client": return r && setLeadStatus(r, "client");
+    case "copy": return r && navigator.clipboard.writeText(r.from_email).then(() => toast("Copied " + r.from_email), () => toast("The address is " + r.from_email));
+    case "back": S.replies.reading = false; history.replaceState(null, "", "#replies"); render(); window.scrollTo(0, S.replies.mobileScroll || 0);
+      return document.querySelector(`.ritem[data-rid="${S.replies.selected}"]`)?.focus({ preventScroll: true });
+    case "clear-replies": S.replies.q = ""; S.replies.label = ""; return render();
+    case "clear-orgs": S.orgs.q = ""; S.orgs.industry = ""; S.orgs.status = ""; return render();
+    case "close-org": return closeOrg();
+    case "tl-retry": return loadTimeline(+t.dataset.lead, { force: true });
+    case "expand": { const k = t.dataset.key; S.expanded.has(k) ? S.expanded.delete(k) : S.expanded.add(k); renderOverlays(); refreshReaderHistory(+k.split("-")[0]); return; }
+  }
+});
+document.addEventListener("input", e => {
+  const id = e.target.id, v = e.target.value;
+  if (id === "cmdk-input") { S.cmdk.q = v; S.cmdk.idx = 0; return renderCmdk(); }
+  if (id === "rq") S.replies.q = v; else if (id === "rlabel") S.replies.label = v;
+  else if (id === "oq") S.orgs.q = v; else if (id === "oind") S.orgs.industry = v; else if (id === "ost") S.orgs.status = v; else return;
+  render();
+});
+let gAt = 0;
+document.addEventListener("keydown", e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); return S.cmdk.open ? closeCmdk() : openCmdk(); }
+  if (S.cmdk.open) {
+    const n = cmdItems().length;
+    if (e.key === "Escape") { e.preventDefault(); return closeCmdk(); }
+    if (e.key === "ArrowDown") { e.preventDefault(); S.cmdk.idx = Math.min(n - 1, S.cmdk.idx + 1); return renderCmdk(); }
+    if (e.key === "ArrowUp") { e.preventDefault(); S.cmdk.idx = Math.max(0, S.cmdk.idx - 1); return renderCmdk(); }
+    if (e.key === "Enter") { e.preventDefault(); return runCmd(S.cmdk.idx); }
+    if (e.key === "Tab") { e.preventDefault(); $("#cmdk-input").focus(); }
+    return;
+  }
+  if (S.org.id != null) {
+    if (e.key === "Escape") { e.preventDefault(); return closeOrg(); }
+    if (e.key === "Tab") { const f = [...document.querySelectorAll(".drawer button, .drawer a[href]")]; if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); } }
+    return;
+  }
+  if (e.key === "Enter" && e.target.matches?.("tr[data-org]")) { e.preventDefault(); S.org.ret = e.target; return openOrg(+e.target.dataset.org); }
+  if (isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey || !S.data) return;
+  const k = e.key.toLowerCase();
+  if (k === "g") { gAt = Date.now(); return; }
+  if (Date.now() - gAt < 900) { const n = NAV.find(x => x.key.toLowerCase() === k); gAt = 0; if (n) { e.preventDefault(); location.hash = n.view; } return; }
+  if (S.view !== "replies") return;
+  const list = filteredReplies(), i = list.findIndex(r => r.id === S.replies.selected);
+  const move = d => { const x = list[Math.max(0, Math.min(list.length - 1, i + d))]; if (x && x.id !== S.replies.selected) selectReply(x.id); };
+  const inList = e.target.closest?.(".rlist");
+  if (k === "j" || (e.key === "ArrowDown" && inList)) { e.preventDefault(); move(1); }
+  else if (k === "k" || (e.key === "ArrowUp" && inList)) { e.preventDefault(); move(-1); }
+  else if (k === "h") { const r = replyById(S.replies.selected); if (r && !S.pending) { e.preventDefault(); setHandled(r, !r.handled); } }
+});
+let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (S.view === "today" && S.data) drawActivity(); }, 150); });
+window.addEventListener("hashchange", route);
+document.addEventListener("toggle", e => {
+  const d = e.target; if (!d.matches?.(".sentsec")) return;
+  const id = +d.dataset.sent, was = S.sentOpen.has(id);
+  if (d.open === was) return;
+  if (d.open) { S.sentOpen.add(id); refreshReaderHistory(id); loadTimeline(id); } else S.sentOpen.delete(id);
+}, true);
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S.mode === "live" && Date.now() - S.lastOk > POLL_MS) poll(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { renderChrome(); if (S.view === "today" && S.data) drawActivity(); });
+
+applyStoredTheme();
+route();
+refresh().then(route);
+setInterval(poll, POLL_MS);
+setInterval(() => { if (S.data && !busy()) renderChrome(); }, 30000);
+</script>

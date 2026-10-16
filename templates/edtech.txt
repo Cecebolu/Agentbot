@@ -1,0 +1,19 @@
+Subject: SMS reminders and OTPs for your learners — can we talk?
+Hello {company} team,
+
+{opener}
+
+I'm {sender} from TalkSasa Communications in Nairobi. Learning platforms use our bulk SMS for {uses}.
+
+I'd like to understand how you reach your learners today and whether we could support you.
+
+Would you be open to a short visit or a quick call? Any day that suits you works for us.
+
+{attachment_line}
+
+Kind regards,
+{sender}
+{our_company}
+{phone}
+{website}
+{profile_line}
