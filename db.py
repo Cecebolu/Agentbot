@@ -62,6 +62,8 @@ CREATE TABLE IF NOT EXISTS replies (
     label TEXT,
     summary TEXT,
     imap_uid TEXT UNIQUE,
+    -- the email's own Message-ID, so a copy found in another folder isn't stored twice
+    message_id TEXT,
     received_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 -- mail that isn't from a lead, so the inbox check doesn't look at it again
@@ -116,7 +118,8 @@ def init():
                                  ("leads", "source_url", "TEXT"), ("leads", "discovered_at", "TEXT"),
                                  ("leads", "meeting_at", "TEXT"), ("leads", "client_at", "TEXT"),
                                  ("leads", "score", "INTEGER"), ("leads", "score_reasons", "TEXT"),
-                                 ("leads", "score_version", "INTEGER")):
+                                 ("leads", "score_version", "INTEGER"),
+                                 ("replies", "message_id", "TEXT")):
             if col not in {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
         # Leads from before these existed
@@ -279,6 +282,10 @@ def bounce_stats(days):
                          (f"-{int(days)} days",)).fetchall()
     return len(rows), sum(r["bounced"] for r in rows)
 
+def sent_subjects():
+    with conn() as c:
+        return {r[0] for r in c.execute("SELECT DISTINCT sent_subject FROM sent WHERE sent_subject IS NOT NULL")}
+
 def first_sent_date():
     with conn() as c:
         return c.execute("SELECT MIN(sent_on) FROM sent").fetchone()[0]
@@ -333,18 +340,33 @@ def alert_failed(alert_id, error):
     with conn() as c:
         c.execute("UPDATE alert_outbox SET attempts=attempts+1, last_error=? WHERE id=?", (error, alert_id))
 
-def add_reply(lead_id, from_email, subject, body, label, summary, uid):
+def reply_with_message_id(message_id):
+    with conn() as c:
+        return c.execute("SELECT 1 FROM replies WHERE message_id=?", (message_id,)).fetchone() is not None
+
+def replies_without_message_id():
+    """(reply id, INBOX UID) for replies stored before Message-IDs were kept."""
+    with conn() as c:
+        return [(r[0], r[1]) for r in c.execute(
+            "SELECT id, imap_uid FROM replies WHERE message_id IS NULL AND imap_uid NOT LIKE '%:%'")]
+
+def set_reply_message_id(reply_id, message_id):
+    with conn() as c:
+        c.execute("UPDATE replies SET message_id=? WHERE id=?", (message_id, reply_id))
+
+def add_reply(lead_id, from_email, subject, body, label, summary, uid, message_id=None):
     """Returns the new reply's id, or None if it is already stored (same imap_uid): that
     one is left alone and logs nothing, so checking the inbox again never repeats it."""
     with conn() as c:
         cur = c.execute(
-            "INSERT OR IGNORE INTO replies (lead_id, from_email, subject, body, label, summary, imap_uid)"
-            " VALUES (?,?,?,?,?,?,?)",
-            (lead_id, from_email, subject, body, label, summary, uid),
+            "INSERT OR IGNORE INTO replies (lead_id, from_email, subject, body, label, summary, imap_uid,"
+            " message_id) VALUES (?,?,?,?,?,?,?,?)",
+            (lead_id, from_email, subject, body, label, summary, uid, message_id),
         )
         if cur.rowcount != 1:
             return None
-        log_event(c, lead_id, "replied", reply_id=cur.lastrowid, label=label)
+        if lead_id is not None:  # a reply linked to no lead has no lead history to add to
+            log_event(c, lead_id, "replied", reply_id=cur.lastrowid, label=label)
         return cur.lastrowid
 
 def skipped_uids():

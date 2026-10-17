@@ -25,7 +25,7 @@ def send(text):
 
 def alert_text(lead, reply_from, subject, label, summary, body):
     icon = ICONS.get(label, "📩")
-    company = lead["company"] if lead else "Unknown company"
+    company = lead["company"] if lead else "Not linked to a lead"
     snippet = body.strip()[:400]
     return (f"{icon} {label.upper()} — {company}\n"
             f"From: {reply_from}\nSubject: {subject}\n\n"

@@ -143,9 +143,70 @@ def find_original_recipient(msg):
     return m.group(1).lower() if m else None
 
 
-# What a caught-up message is stored as (see check_once): it waits for you, unread by the AI
-HELD = {"label": "needs_review",
+# Replies stored for a person to read, never sent to the AI and never acted on ("hold"
+# means: alert on Telegram, whatever the label)
+HELD = {"label": "needs_review", "hold": True,
         "summary": "Missed by an earlier check and caught up later; not read by the AI. Please read it."}
+NOT_LINKED = {"label": "needs_review", "hold": True,
+              "summary": "A reply to our email from an address not linked to any lead; not read by the AI."}
+# The Message-IDs LeadBot gives its own emails (email.utils.make_msgid): <digits.digits.digits@domain>
+LEADBOT_MESSAGE_ID = re.compile(r"<\d+\.\d+\.\d+@([^>\s]+)>")
+TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+
+def outreach_subjects():
+    """The subjects our emails go out with: every template's, and every one recorded as sent."""
+    subjects = {path.read_text(encoding="utf-8").split("\n", 1)[0].replace("Subject:", "").strip()
+                for path in TEMPLATE_DIR.glob("*.txt")}
+    return {s.lower() for s in subjects | db.sent_subjects() if s}
+
+
+def answers_our_email(headers, subject, subjects):
+    """Whether a message is a reply to one of our emails, whoever sent it: it answers a
+    Message-ID that LeadBot made, or its subject contains one of our outreach subjects."""
+    domain = config.FROM_EMAIL.rsplit("@", 1)[-1].lower()
+    refs = f"{headers.get('In-Reply-To', '')} {headers.get('References', '')}"
+    if any(d.lower() == domain for d in LEADBOT_MESSAGE_ID.findall(refs)):
+        return True
+    return any(s in subject.lower() for s in subjects)
+
+
+# Folders never read: our own outgoing mail. Everything else is, Junk and Trash included,
+# so a reply that was filtered or moved before a check still shows.
+SKIP_FOLDER_FLAGS = {"\\sent", "\\drafts", "\\noselect"}
+SKIP_FOLDER_NAMES = {"sent", "drafts", "sent items", "sent messages", "sent mail", "[gmail]/sent mail",
+                     "[gmail]/drafts", "[gmail]/all mail"}
+
+
+def mail_folders(box):
+    """The folders replies can be in, INBOX first: every folder but Sent and Drafts."""
+    from sender import _folders  # the LIST parser that also finds the Sent folder
+    names = []
+    for flags, name in _folders(box):
+        short = name.lower().removeprefix("inbox.").removeprefix("inbox/")
+        if not SKIP_FOLDER_FLAGS & set(flags) and short not in SKIP_FOLDER_NAMES:
+            names.append(name)
+    return sorted(names, key=lambda n: n.upper() != "INBOX")
+
+
+def mail_key(folder, uid):
+    """How a message is remembered: its UID in INBOX (as it always was), folder:UID elsewhere."""
+    return uid if folder.upper() == "INBOX" else f"{folder}:{uid}"
+
+
+def quoted(folder):
+    return '"' + folder.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def fill_message_ids(box):
+    """Give replies stored before Message-IDs were kept their Message-ID, read from INBOX,
+    so the same email found later in another folder is recognised as already stored."""
+    for reply_id, uid in db.replies_without_message_id():
+        typ, head = box.uid("fetch", uid.encode(), "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+        if typ == "OK" and head and isinstance(head[0], tuple):
+            mid = email.message_from_bytes(head[0][1]).get("Message-ID", "").strip()
+            if mid:
+                db.set_reply_message_id(reply_id, mid)
 
 
 def check_once(catch_up=False):
@@ -153,7 +214,11 @@ def check_once(catch_up=False):
     bounces of our own emails, and unsubscribe requests from a lead's colleagues (same
     company domain). Read and unread mail alike, since our first send: each message is
     handled once, then remembered. Everything else is skipped: never downloaded in full,
-    never sent to the AI, and left unread exactly as it was.
+    never sent to the AI, and left unread exactly as it was. Every folder but Sent and
+    Drafts is read; an email found in two folders (moved after it was stored) counts once.
+
+    A reply to one of our emails from an address linked to no lead (a forward, a personal
+    address, a test) is stored too, as needs_review, and sent to you without the AI.
 
     catch_up=True reads only the mail an earlier check skipped, for when the matching has
     improved since. Whatever now matches a lead is stored as needs_review and sent to you
@@ -162,81 +227,24 @@ def check_once(catch_up=False):
     send_alerts()  # alerts left over from a check when Telegram was unreachable
     box = imaplib.IMAP4_SSL(config.IMAP_HOST)
     box.login(config.IMAP_USER, config.IMAP_PASS)
-    box.select("INBOX")
     since = since_first_send()
-    uids = box.uid("search", None, "SINCE", since)[1][0].split() if since else []
     handled = 0
     skipped, newly_skipped, caught = db.skipped_uids(), [], []
-    for uid in uids:
-        uid_s = uid.decode()
-        if db.reply_seen(uid_s) or (uid_s in skipped) != catch_up:
-            continue  # a normal check leaves skipped mail alone; a catch-up reads only that
-        # Look at the headers only. BODY.PEEK never marks the mail as read.
-        _, head = box.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (FROM IN-REPLY-TO REFERENCES)])")
-        if not head or not isinstance(head[0], tuple):
+    subjects = outreach_subjects()
+    for folder in mail_folders(box) if since else []:
+        if box.select(quoted(folder))[0] != "OK":
             continue
-        headers = email.message_from_bytes(head[0][1])
-        sender = parseaddr(headers.get("From", ""))[1].lower()
-        is_bounce = sender.startswith(BOUNCE_SENDERS)
-        lead = db.find_lead_by_email(sender) or (None if is_bounce else thread_lead(headers))
-        colleagues = [] if lead or is_bounce else colleague_leads(sender)
-        if not lead and not is_bounce and not colleagues:
-            newly_skipped.append(uid_s)  # not a lead: leave it alone
-            continue
-
-        _, msg_data = box.uid("fetch", uid, "(BODY.PEEK[])")
-        msg = email.message_from_bytes(msg_data[0][1])
-        subject = str(make_header(decode_header(msg.get("Subject", ""))))
-        body = text_of(msg)
-
-        if colleagues:
-            # Someone else at a lead's company, not answering one of our emails. Only an
-            # unsubscribe request is acted on, by the rules alone: never sent to the AI.
-            if classifier.quick_rules(f"Subject: {subject}\n\n{body}") != "unsubscribe":
-                newly_skipped.append(uid_s)
-                continue
-            lead = colleagues[0]
-            if catch_up:  # an old request: held for you to act on, not acted on by the rules
-                colleagues, result = [], HELD
-            else:
-                result = {"label": "unsubscribe",
-                          "summary": f"{sender} asked to unsubscribe {sender.rsplit('@', 1)[-1]}"}
-        elif is_bounce:
-            failed = find_original_recipient(msg)
-            lead = db.find_lead_by_email(failed) if failed else None
-            if not lead:
-                newly_skipped.append(uid_s)  # a bounce of some other email, not ours
-                continue
-            # "Delayed Mail" warnings mean the server is still retrying: not a bounce
-            action = re.search(r"^Action:\s*(\w+)", msg.as_string(), re.I | re.M)
-            if action and action.group(1).lower() != "failed":
-                newly_skipped.append(uid_s)
-                continue
-            result = {"label": "bounce", "summary": f"delivery to {failed} failed"}
-        elif is_auto_reply(msg, subject):
-            result = {"label": "out_of_office", "summary": "automatic reply"}
-        else:
-            result = HELD if catch_up else classifier.classify(f"Subject: {subject}\n\n{body}")
-        label = result["label"]
-
-        reply_id = db.add_reply(lead["id"], sender, subject, body, label, result["summary"], uid_s)
-        if not reply_id:
-            continue  # stored by an earlier check: nothing is logged or alerted twice
-        for each in colleagues or [lead]:  # a colleague's opt-out covers every lead at that company
-            new_status = status_after(each["status"], label)
-            if new_status:
-                db.set_status(each["id"], new_status, "inbox")
-        if label == "unsubscribe" and sender != lead["email"]:
-            db.unsubscribe(sender)  # the person who asked is never emailed or added either
-
-        if catch_up:
-            caught.append(uid_s)
-        if label in ALERT_ON or (catch_up and label == "needs_review"):
-            # Queued, then sent after the loop: a Telegram error can't stop the check
-            db.queue_alert(reply_id, notify.alert_text(lead, sender, subject, label, result["summary"], body))
-            box.uid("store", uid, "+FLAGS", "(\\Seen)")  # the alert is on its way
-        print(f"  {label:15} {sender}  {result['summary']}")
-        handled += 1
+        if folder.upper() == "INBOX":
+            fill_message_ids(box)
+        for uid in box.uid("search", None, "SINCE", since)[1][0].split():
+            key = mail_key(folder, uid.decode())
+            if db.reply_seen(key) or (key in skipped) != catch_up:
+                continue  # a normal check leaves skipped mail alone; a catch-up reads only that
+            result = check_message(box, uid, key, subjects, catch_up, newly_skipped)
+            if result:
+                if catch_up:
+                    caught.append(key)
+                handled += 1
 
     db.add_skipped(newly_skipped)
     db.unskip(caught)
@@ -245,6 +253,93 @@ def check_once(catch_up=False):
     (Path(__file__).parent / "last_check.txt").write_text(datetime.now().isoformat(timespec="seconds"))
     send_alerts()
     return handled
+
+
+def check_message(box, uid, key, subjects, catch_up, newly_skipped):
+    """Handle one message of the selected folder. Returns its result if it was stored,
+    None if it was skipped (added to newly_skipped when it should never be looked at again)."""
+    # Look at the headers only. BODY.PEEK never marks the mail as read.
+    _, head = box.uid("fetch", uid,
+                      "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT MESSAGE-ID IN-REPLY-TO REFERENCES)])")
+    if not head or not isinstance(head[0], tuple):
+        return None
+    headers = email.message_from_bytes(head[0][1])
+    message_id = headers.get("Message-ID", "").strip() or None
+    if message_id and db.reply_with_message_id(message_id):
+        if not catch_up:
+            newly_skipped.append(key)  # the same email, already stored from another folder
+        return None
+    sender = parseaddr(headers.get("From", ""))[1].lower()
+    is_bounce = sender.startswith(BOUNCE_SENDERS)
+    lead = db.find_lead_by_email(sender) or (None if is_bounce else thread_lead(headers))
+    colleagues = [] if lead or is_bounce else colleague_leads(sender)
+    to_us = not is_bounce and answers_our_email(
+        headers, str(make_header(decode_header(headers.get("Subject", "")))), subjects)
+    if not lead and not is_bounce and not colleagues and not to_us:
+        newly_skipped.append(key)  # not a lead and not a reply to us: leave it alone
+        return None
+
+    _, msg_data = box.uid("fetch", uid, "(BODY.PEEK[])")
+    msg = email.message_from_bytes(msg_data[0][1])
+    subject = str(make_header(decode_header(msg.get("Subject", ""))))
+    body = text_of(msg)
+
+    if colleagues:
+        # Someone else at a lead's company, not in our email's thread. An unsubscribe
+        # request is acted on by the rules alone; a reply to our email is held for you;
+        # anything else is left alone. Never sent to the AI.
+        opt_out = classifier.quick_rules(f"Subject: {subject}\n\n{body}") == "unsubscribe"
+        if not opt_out and not to_us:
+            newly_skipped.append(key)
+            return None
+        lead = colleagues[0]
+        if catch_up or not opt_out:  # held for you to read and act on
+            colleagues = []
+            result = HELD if catch_up else {
+                "label": "needs_review", "hold": True,
+                "summary": f"A reply to our email from someone else at {sender.rsplit('@', 1)[-1]}; "
+                           "not read by the AI."}
+        else:
+            result = {"label": "unsubscribe",
+                      "summary": f"{sender} asked to unsubscribe {sender.rsplit('@', 1)[-1]}"}
+    elif is_bounce:
+        # "Delayed Mail" warnings mean the server is still retrying: not a bounce
+        action = re.search(r"^Action:\s*(\w+)", msg.as_string(), re.I | re.M)
+        if action and action.group(1).lower() != "failed":
+            newly_skipped.append(key)
+            return None
+        failed = find_original_recipient(msg)
+        lead = db.find_lead_by_email(failed) if failed else thread_lead(msg)
+        if lead:
+            result = {"label": "bounce", "summary": f"delivery to {failed or lead['email']} failed"}
+        else:  # shown, so you can tell whose email it was; it changes no lead
+            result = {"label": "bounce", "summary": "A delivery failure the bot could not link to a "
+                                                    "lead; not read by the AI. Check which email it was."}
+    elif is_auto_reply(msg, subject):
+        result = {"label": "out_of_office", "summary": "automatic reply"}
+    elif lead is None:  # a reply to our email from an address linked to no lead
+        result = NOT_LINKED
+    else:
+        result = HELD if catch_up else classifier.classify(f"Subject: {subject}\n\n{body}")
+    label = result["label"]
+
+    reply_id = db.add_reply(lead["id"] if lead else None, sender, subject, body, label,
+                            result["summary"], key, message_id)
+    if not reply_id:
+        return None  # stored by an earlier check: nothing is logged or alerted twice
+    for each in colleagues or ([lead] if lead else []):  # a colleague's opt-out covers the company
+        new_status = status_after(each["status"], label)
+        if new_status:
+            db.set_status(each["id"], new_status, "inbox")
+    if label == "unsubscribe" and lead and sender != lead["email"]:
+        db.unsubscribe(sender)  # the person who asked is never emailed or added either
+
+    if label in ALERT_ON or result.get("hold"):
+        # Queued, then sent after the loop: a Telegram error can't stop the check
+        db.queue_alert(reply_id, notify.alert_text(lead, sender, subject, label, result["summary"], body))
+        box.uid("store", uid, "+FLAGS", "(\\Seen)")  # the alert is on its way
+    print(f"  {label:15} {sender}  {result['summary']}")
+    return result
 
 
 def watch():

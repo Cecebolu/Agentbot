@@ -1093,7 +1093,7 @@ function renderReader(r) {
       <div class="feedback" aria-live="polite">${err ? `<p class="err" role="alert">Couldn't save. ${esc(err)}</p>` : ok ? `<p class="ok">${esc(ok)}</p>` : ""}</div>
     </div>
     <div class="rbody">
-      <section class="ai" aria-label="LeadBot's reading"><p class="who">${ico("sparkles", "sm")}LeadBot's reading · AI-generated <span>· may be wrong, check the original</span></p><p>${esc(r.summary || "No summary was produced.")}</p></section>
+      <section class="ai" aria-label="LeadBot's reading"><p class="who">${/not read by the AI/.test(r.summary || "") ? `${ico("inbox", "sm")}LeadBot's note <span>· not read by the AI, read the original</span>` : `${ico("sparkles", "sm")}LeadBot's reading · AI-generated <span>· may be wrong, check the original</span>`}</p><p>${esc(r.summary || "No summary was produced.")}</p></section>
       ${lead ? `<details class="sentsec" data-sent="${lead.id}" ${S.sentOpen.has(lead.id) ? "open" : ""}><summary>${ico("send", "sm")}What you sent them <span class="n">· ${seqText(lead.step)}</span>${ico("chevR", "sm chev")}</summary>
         <div>${S.sentOpen.has(lead.id) ? timelineHTML(lead.id, { outOnly: true }) : ""}</div></details>` : ""}
       <section class="orig" aria-label="Original email"><p class="lbl">Original email</p><h3>${esc(r.subject || "(no subject)")}</h3><div class="letter">${esc(r.body || "(empty message)")}</div></section>
