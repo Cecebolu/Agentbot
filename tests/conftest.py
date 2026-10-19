@@ -18,6 +18,20 @@ import sender  # noqa: E402
 from fakemail import SENT_ID  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """Any test that tries to reach the network (a real mail server, the AI, Telegram,
+    WHOIS, a website) fails instead."""
+    import socket
+
+    def blocked(*a, **k):
+        pytest.fail("a test tried to use the network")
+
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)
+    monkeypatch.setattr(socket, "getaddrinfo", blocked)
+
+
 @pytest.fixture
 def leads(tmp_path, monkeypatch):
     """A fresh database with three emailed leads, one of them on gmail.com."""

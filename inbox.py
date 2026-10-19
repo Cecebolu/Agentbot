@@ -15,7 +15,9 @@ import db
 import notify
 import ranking
 
-ALERT_ON = {"interested", "question"}
+# needs_review is everything held for a person: an AI failure, an unsure AI, a reply that
+# mentions opting out without plainly asking. Each reply is alerted once (alert_outbox).
+ALERT_ON = {"interested", "question", "needs_review"}
 BOUNCE_SENDERS = ("mailer-daemon@", "postmaster@")
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 # Where the quoted copy of the email being answered starts in a plain-text reply
@@ -288,8 +290,9 @@ def check_message(box, uid, key, subjects, catch_up, newly_skipped):
         # Someone else at a lead's company, not in our email's thread. An unsubscribe
         # request is acted on by the rules alone; a reply to our email is held for you;
         # anything else is left alone. Never sent to the AI.
-        opt_out = classifier.quick_rules(f"Subject: {subject}\n\n{body}") == "unsubscribe"
-        if not opt_out and not to_us:
+        rule = classifier.quick_rules(f"Subject: {subject}\n\n{body}")
+        opt_out = rule == "unsubscribe"
+        if not opt_out and not to_us and rule != "needs_review":
             newly_skipped.append(key)
             return None
         lead = colleagues[0]
@@ -297,8 +300,9 @@ def check_message(box, uid, key, subjects, catch_up, newly_skipped):
             colleagues = []
             result = HELD if catch_up else {
                 "label": "needs_review", "hold": True,
-                "summary": f"A reply to our email from someone else at {sender.rsplit('@', 1)[-1]}; "
-                           "not read by the AI."}
+                "summary": ("Mentions unsubscribing, but is not a plain request to stop," if rule == "needs_review"
+                            else "A reply to our email") +
+                           f" from someone else at {sender.rsplit('@', 1)[-1]}; not read by the AI."}
         else:
             result = {"label": "unsubscribe",
                       "summary": f"{sender} asked to unsubscribe {sender.rsplit('@', 1)[-1]}"}
@@ -318,7 +322,9 @@ def check_message(box, uid, key, subjects, catch_up, newly_skipped):
     elif is_auto_reply(msg, subject):
         result = {"label": "out_of_office", "summary": "automatic reply"}
     elif lead is None:  # a reply to our email from an address linked to no lead
-        result = NOT_LINKED
+        # A plain request to stop is still kept: that address is never emailed or added
+        opted_out = not catch_up and classifier.quick_rules(f"Subject: {subject}\n\n{body}") == "unsubscribe"
+        result = {"label": "unsubscribe", "summary": f"{sender} asked to unsubscribe"} if opted_out else NOT_LINKED
     else:
         result = HELD if catch_up else classifier.classify(f"Subject: {subject}\n\n{body}")
     label = result["label"]
@@ -331,10 +337,10 @@ def check_message(box, uid, key, subjects, catch_up, newly_skipped):
         new_status = status_after(each["status"], label)
         if new_status:
             db.set_status(each["id"], new_status, "inbox")
-    if label == "unsubscribe" and lead and sender != lead["email"]:
+    if label == "unsubscribe" and (not lead or sender != lead["email"]):
         db.unsubscribe(sender)  # the person who asked is never emailed or added either
 
-    if label in ALERT_ON or result.get("hold"):
+    if label in ALERT_ON or result.get("hold"):  # one alert per stored reply: reply_id is unique in the outbox
         # Queued, then sent after the loop: a Telegram error can't stop the check
         db.queue_alert(reply_id, notify.alert_text(lead, sender, subject, label, result["summary"], body))
         box.uid("store", uid, "+FLAGS", "(\\Seen)")  # the alert is on its way

@@ -2,6 +2,7 @@
 import csv
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 
@@ -98,12 +99,49 @@ CREATE TABLE IF NOT EXISTS alert_outbox (
     attempts INTEGER DEFAULT 0,
     last_error TEXT
 );
+-- an email being sent right now: claimed (in one transaction that rechecks the lead and the
+-- daily limit) just before it goes to the mail server, removed once it is recorded in sent
+-- or has failed. One that is left over means a run stopped mid-send: that email may have
+-- gone out, so the lead is not emailed again until you check (see sender.leftover_claims).
+CREATE TABLE IF NOT EXISTS send_claims (
+    lead_id INTEGER REFERENCES leads(id),
+    step INTEGER,
+    claimed_on TEXT,
+    claimed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    owner TEXT,
+    PRIMARY KEY (lead_id, step)
+);
+-- one row per lock held: only one send run at a time, across processes
+CREATE TABLE IF NOT EXISTS locks (
+    name TEXT PRIMARY KEY,
+    owner TEXT,
+    acquired_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT
+);
 """
 
 def conn():
-    c = sqlite3.connect(config.DB_PATH)
+    # waits up to 30 seconds for another process's write instead of failing at once
+    c = sqlite3.connect(config.DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
     return c
+
+@contextmanager
+def immediate():
+    """A transaction that takes the write lock at the start (BEGIN IMMEDIATE), so what it
+    reads cannot change before it writes, even with other processes on the same file."""
+    c = sqlite3.connect(config.DB_PATH, timeout=30, isolation_level=None)
+    c.row_factory = sqlite3.Row
+    try:
+        c.execute("BEGIN IMMEDIATE")
+        try:
+            yield c
+        except BaseException:
+            c.execute("ROLLBACK")
+            raise
+        c.execute("COMMIT")
+    finally:
+        c.close()
 
 def init():
     with conn() as c:
@@ -220,7 +258,10 @@ def find_lead_by_email(email):
         return c.execute("SELECT * FROM leads WHERE email=?", (email.lower(),)).fetchone()
 
 def record_sent(lead_id, message_id, template, subject=None, body=None, subject_variant=None):
+    """Record an email that went out. Its send claim, if any, is removed in the same
+    transaction, so the email counts once towards the daily limit."""
     with conn() as c:
+        c.execute("DELETE FROM send_claims WHERE lead_id=?", (lead_id,))
         cur = c.execute("INSERT INTO sent (lead_id, message_id, template, sent_subject, sent_body)"
                         " VALUES (?,?,?,?,?)",
                         (lead_id, message_id, template, subject, body))
@@ -318,6 +359,70 @@ def sent_today():
     with conn() as c:
         return c.execute("SELECT COUNT(*) FROM sent WHERE sent_on=?",
                          (date.today().isoformat(),)).fetchone()[0]
+
+# --- Sending safely with more than one run (G-03, G-04) ---
+
+def acquire_lock(name, owner, seconds):
+    """Take the named lock for `seconds`, unless another owner holds it and it hasn't
+    expired. Returns True if `owner` now holds it."""
+    with immediate() as c:
+        c.execute("DELETE FROM locks WHERE name=? AND (expires_at IS NULL OR expires_at < datetime('now'))",
+                  (name,))
+        c.execute("INSERT OR IGNORE INTO locks (name, owner, expires_at) VALUES (?,?,datetime('now', ?))",
+                  (name, owner, f"{int(seconds):+d} seconds"))
+        return c.execute("SELECT owner FROM locks WHERE name=?", (name,)).fetchone()["owner"] == owner
+
+def refresh_lock(name, owner, seconds):
+    with immediate() as c:
+        c.execute("UPDATE locks SET expires_at=datetime('now', ?) WHERE name=? AND owner=?",
+                  (f"{int(seconds):+d} seconds", name, owner))
+
+def release_lock(name, owner):
+    with immediate() as c:
+        c.execute("DELETE FROM locks WHERE name=? AND owner=?", (name, owner))
+
+def lock_holder(name):
+    with conn() as c:
+        return c.execute("SELECT * FROM locks WHERE name=?", (name,)).fetchone()
+
+def claim_send(lead_id, followup, daily_limit, owner=None):
+    """Claim one email just before it goes to the mail server. Returns None if it may go,
+    otherwise why not. Rechecked here, in one write transaction, whatever the batch was
+    built from: the lead still at the right status, not suppressed, not already emailed
+    (or being emailed), and today's sends plus emails in flight under the daily limit."""
+    step = 2 if followup else 1
+    today = date.today().isoformat()  # the same day sent_today counts
+    with immediate() as c:
+        lead = c.execute("SELECT email, status FROM leads WHERE id=?", (lead_id,)).fetchone()
+        if not lead:
+            return "no such lead"
+        wanted = "sent" if followup else "verified"
+        if lead["status"] != wanted:
+            return f"status is now {lead['status']}, not {wanted}"
+        if c.execute("SELECT 1 FROM suppression WHERE email=?", (lead["email"].lower().strip(),)).fetchone():
+            return "on the suppression list"
+        emailed = c.execute("SELECT COUNT(*) FROM sent WHERE lead_id=?", (lead_id,)).fetchone()[0]
+        if emailed != step - 1:
+            return f"{emailed} emails already sent"
+        if c.execute("SELECT 1 FROM send_claims WHERE lead_id=?", (lead_id,)).fetchone():
+            return "already being sent by another run, or left over from a run that stopped mid-send"
+        used = (c.execute("SELECT COUNT(*) FROM sent WHERE sent_on=?", (today,)).fetchone()[0]
+                + c.execute("SELECT COUNT(*) FROM send_claims WHERE claimed_on=?", (today,)).fetchone()[0])
+        if used >= daily_limit:
+            return f"daily limit of {daily_limit} reached"
+        c.execute("INSERT INTO send_claims (lead_id, step, claimed_on, owner) VALUES (?,?,?,?)",
+                  (lead_id, step, today, owner))
+    return None
+
+def release_claim(lead_id):
+    """The email did not go out: free the claim so the lead can be tried again."""
+    with conn() as c:
+        c.execute("DELETE FROM send_claims WHERE lead_id=?", (lead_id,))
+
+def send_claims():
+    with conn() as c:
+        return c.execute("SELECT sc.*, l.email FROM send_claims sc LEFT JOIN leads l ON l.id = sc.lead_id"
+                         " ORDER BY claimed_at").fetchall()
 
 def reply_seen(uid):
     with conn() as c:

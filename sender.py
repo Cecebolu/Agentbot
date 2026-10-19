@@ -2,9 +2,13 @@
 Every email that goes out is also filed in the mailbox's Sent folder."""
 import html
 import imaplib
+import os
 import re
 import smtplib
+import socket
+import sys
 import time
+import uuid
 from datetime import date, timedelta
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, formataddr
@@ -381,9 +385,47 @@ def _paused(reason):
         pass  # the message above says it too
 
 
-def run(dry_run=False):
+SEND_LOCK = "send"
+LOCK_SECONDS = 3600  # renewed after every email; a run that crashes frees it after this
+
+
+def leftover_claims():
+    """Emails claimed by an earlier run that stopped before recording them. Each one may
+    or may not have gone out, so that lead is held (never emailed again) until you check
+    the Sent folder and remove the claim. Printed at the start of every real send."""
+    rows = db.send_claims()
+    for r in rows:
+        print(f"WARNING: an earlier run stopped while sending to {r['email']} (claimed {r['claimed_at']} UTC). "
+              "It may have gone out, so that lead is held. Check the Sent folder, then delete its row "
+              "from send_claims.")
+    return rows
+
+
+def plan(dry_run=False):
+    """Today's batch as [(lead, is_followup)], follow-ups first. A dry run reads only: no
+    start years are looked up (WHOIS, websites), no scores saved and no AI asked, so leads
+    not ranked yet are shown in the order they would have without those."""
     remaining = config.DAILY_LIMIT - db.sent_today()
     if remaining <= 0:
+        return []
+    # Follow-ups first: they fall due on a set day, and a second note is answered more often
+    # than a first one. New leads get what is left of today's limit.
+    due = followups_due()[:remaining]
+    leads = []
+    if remaining > len(due):
+        # Highest-scoring leads first (younger companies, busy niches, own-domain email),
+        # then oldest-found first. Start years are needed for every waiting lead to rank them.
+        if not dry_run:
+            ranking.fill_years()
+        leads = approved_waiting()[:remaining - len(due)]
+        # Write personal lines for any of today's leads that don't have them yet
+        if not dry_run and leads and (personalise.run(leads) or any(l["confidence"] is None for l in leads)):
+            leads = approved_waiting(quiet=True)[:remaining - len(due)]
+    return [(lead, True) for lead in due] + [(lead, False) for lead in leads]
+
+
+def run(dry_run=False):
+    if config.DAILY_LIMIT - db.sent_today() <= 0:
         print(f"Daily limit of {config.DAILY_LIMIT} reached. Try again tomorrow.")
         return
     paused = bounce_gate()
@@ -392,38 +434,49 @@ def run(dry_run=False):
         return
     if paused:
         print(f"NOTE: a real send would be paused: {paused}.")
-    # Follow-ups first: they fall due on a set day, and a second note is answered more often
-    # than a first one. New leads get what is left of today's limit.
-    due = followups_due()[:remaining]
-    leads = []
-    if remaining > len(due):
-        # Highest-scoring leads first (younger companies, busy niches, own-domain email),
-        # then oldest-found first. Start years are needed for every waiting lead to rank them.
-        ranking.fill_years()
-        leads = approved_waiting()[:remaining - len(due)]
-        # Write personal lines for any of today's leads that don't have them yet
-        if leads and (personalise.run(leads) or any(l["confidence"] is None for l in leads)):
-            leads = approved_waiting(quiet=True)[:remaining - len(due)]
-    batch = [(lead, True) for lead in due] + [(lead, False) for lead in leads]
+    if dry_run:
+        return _dry_run()
+    # One send run at a time, across processes (auto, cron, a manual send): a second one
+    # stops here. Each email is also claimed on its own (send_one), so even two runs that
+    # both got past this could never send the same email twice or go over the daily limit.
+    owner = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+    if not db.acquire_lock(SEND_LOCK, owner, LOCK_SECONDS):
+        held = db.lock_holder(SEND_LOCK)
+        print(f"Another send run is in progress (since {held['acquired_at'] if held else '?'} UTC). Not sending.")
+        return
+    try:
+        leftover_claims()
+        batch = plan()
+        if not batch:
+            print("Nothing to send: no follow-ups due and no verified leads waiting in an approved industry.")
+            return
+        _send_batch(batch, owner)
+    finally:
+        db.release_lock(SEND_LOCK, owner)
+
+
+def _dry_run():
+    batch = plan(dry_run=True)
     if not batch:
         print("Nothing to send: no follow-ups due and no verified leads waiting in an approved industry.")
         return
+    due = [b for b in batch if b[1]]
+    for lead, followup in batch[:2] + [b for b in batch if not b[1]][:1 if due else 0]:
+        msg, _ = build_followup(lead) if followup else build(lead)
+        print("=" * 60, f"\n{'FOLLOW-UP' if followup else 'FIRST EMAIL'}\nTo: {msg['To']}\n"
+              f"Subject: {msg['Subject']}\n" + ("" if followup else personal_lines(lead) + "\n")
+              + f"\n{plain_of(msg)}")
+    print(f"\n(dry run) would send {len(due)} follow-ups and {len(batch) - len(due)} first emails. "
+          "Nothing was sent, looked up or saved.")
 
-    if dry_run:
-        for lead, followup in batch[:2] + [b for b in batch if not b[1]][:1 if due else 0]:
-            msg, _ = build_followup(lead) if followup else build(lead)
-            print("=" * 60, f"\n{'FOLLOW-UP' if followup else 'FIRST EMAIL'}\nTo: {msg['To']}\n"
-                  f"Subject: {msg['Subject']}\n" + ("" if followup else personal_lines(lead) + "\n")
-                  + f"\n{plain_of(msg)}")
-        print(f"\n(dry run) would send {len(due)} follow-ups and {len(leads)} first emails.")
-        return
 
-    counts = {"sent": 0, "bounced": 0, "failed": 0}
+def _send_batch(batch, owner):
+    counts = {"sent": 0, "bounced": 0, "failed": 0, "skipped": 0}
     in_a_row = 0  # failures since the last email that went out
     s = connect()
     try:
         for i, (lead, followup) in enumerate(batch, 1):
-            outcome = send_one(s, lead, followup)
+            outcome = send_one(s, lead, followup, owner)
             if outcome == "reconnect":
                 # The connection dropped: reconnect once and try this lead again
                 close(s)
@@ -433,16 +486,17 @@ def run(dry_run=False):
                     print(f"Lost the connection to the mail server and could not reconnect ({e}). "
                           f"Stopping: the other leads stay waiting for the next send.")
                     break
-                outcome = send_one(s, lead, followup)
+                outcome = send_one(s, lead, followup, owner)
                 if outcome == "reconnect":
                     print("Lost the connection to the mail server again. Stopping: the other "
                           "leads stay waiting for the next send.")
                     break
-            if outcome == "stop":
+            if outcome in ("stop", "limit"):
                 break
             counts[outcome] += 1
             in_a_row = in_a_row + 1 if outcome == "failed" else 0
             print(f"[{i}/{len(batch)}] {outcome}{' follow-up' if followup else ''} {lead['email']}")
+            db.refresh_lock(SEND_LOCK, owner, LOCK_SECONDS)
             if outcome == "bounced" and bounce_gate():
                 _paused(bounce_gate())
                 break
@@ -450,12 +504,12 @@ def run(dry_run=False):
                 print(f"{in_a_row} emails failed in a row, so the problem is probably not the leads. "
                       "Stopping: the other leads stay waiting for the next send.")
                 break
-            if i < len(batch):
+            if i < len(batch) and outcome != "skipped":
                 time.sleep(config.SEND_DELAY_SECONDS)
     finally:
         close(s)
-    print(f"Sent {counts['sent']}, bounced {counts['bounced']}, failed {counts['failed']}"
-          f" (failed leads stay waiting and are tried again next time).")
+    print(f"Sent {counts['sent']}, bounced {counts['bounced']}, failed {counts['failed']}, "
+          f"skipped {counts['skipped']} (failed leads stay waiting and are tried again next time).")
 
 
 # After this many failures in a row the batch stops: the mail server or the email itself is
@@ -478,19 +532,41 @@ def close(s):
         pass  # already gone
 
 
-def send_one(s, lead, followup=False):
+def send_one(s, lead, followup=False, owner=None):
     """Try to email one lead its first email, or its follow-up. Returns what happened:
     "sent", "bounced" (address refused), "failed" (this email didn't go out; the lead stays
-    waiting and is tried again next time), "reconnect" (the connection dropped before the
-    email went out) or "stop" (the server refuses our sender or login: no point going on).
-    Anything that goes wrong after the email has gone out is not caught here, so the batch
-    stops instead of risking a second email to the same lead."""
+    waiting and is tried again next time), "skipped" (no longer to be emailed: opted out,
+    suppressed, replied or already emailed since the batch was made), "limit" (today's
+    limit reached), "reconnect" (the connection dropped before the email went out) or
+    "stop" (the server refuses our sender or login: no point going on).
+    The email is claimed first (db.claim_send), which rechecks the lead and the daily limit
+    at the last moment. Anything that goes wrong after the email has gone out is not caught
+    here, so the batch stops, and the claim stays, instead of risking a second email."""
+    why_not = db.claim_send(lead["id"], followup, config.DAILY_LIMIT, owner)
+    if why_not:
+        with db.conn() as c:
+            db.log_event(c, lead["id"], "send_skipped", reason=why_not, followup=followup or None)
+        print(f"  skipped {lead['email']}: {why_not}")
+        return "limit" if why_not.startswith("daily limit") else "skipped"
     try:
         msg, tname = build_followup(lead) if followup else build(lead)
     except Exception as e:  # e.g. a template with a broken {placeholder}
+        db.release_claim(lead["id"])
         return _failed(lead, f"could not build the email: {e}")
     try:
         deliver(s, lead, msg, tname, followup)
+    except (smtplib.SMTPException, OSError, RuntimeError):
+        db.release_claim(lead["id"])  # raised before the email went out (see deliver)
+        return _not_sent(sys.exc_info()[1], lead)
+    if not followup:  # after a follow-up the lead stays at sent, waiting for an answer
+        db.set_status(lead["id"], "sent", "send")
+    return "sent"
+
+
+def _not_sent(error, lead):
+    """What send_one returns for an email the mail server or deliver's checks didn't send."""
+    try:
+        raise error
     except smtplib.SMTPRecipientsRefused:
         db.set_status(lead["id"], "bounced", "send")
         return "bounced"
@@ -507,9 +583,8 @@ def send_one(s, lead, followup=False):
         return "reconnect"
     except RuntimeError as e:  # deliver's own checks: industry not approved, already emailed
         return _failed(lead, str(e))
-    if not followup:  # after a follow-up the lead stays at sent, waiting for an answer
-        db.set_status(lead["id"], "sent", "send")
-    return "sent"
+    except smtplib.SMTPException as e:  # any other refusal: this email didn't go out
+        return _failed(lead, str(e))
 
 
 def _failed(lead, error, code=None):
