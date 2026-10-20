@@ -20,13 +20,15 @@ import config
 import db
 
 app = FastAPI(title="LeadBot")
+from crm import install as install_crm
+install_crm(app)
 from web_extra import router as extra_router
 app.include_router(extra_router)
 HERE = Path(__file__).parent
 PAGE = HERE / "static" / "index.html"
 HEARTBEAT = HERE / "last_check.txt"
 ALLOWED_STATUSES = {"new", "verified", "invalid", "sent", "replied", "meeting", "client",
-                    "bounced", "unsubscribed"}
+                    "bounced", "unsubscribed", "lost"}
 
 
 def conn():

@@ -1,0 +1,796 @@
+<title>CRM · LeadBot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --app: #F7F7F8;
+  --bg: #FDFDFD;
+  --card: #FFFFFF;
+  --hover: #F3F3F5;
+  --nav-sel: #EDEDF0;
+  --muted: #F1F1F3;
+  --line: #EBEBED;
+  --input: #DEDEE1;
+  --fg: #1F1F23;
+  --fg-2: #66656F;
+  --fg-3: #6E6D77;
+  --primary: #4A3AC2;
+  --primary-hover: #3D2FA8;
+  --primary-soft: #F1EFFC;
+  --primary-line: #D9D3F7;
+  --on-primary: #FFFFFF;
+  --cyan: #16C8E8;
+  --pos: #17784A;  --pos-bg: #E8F7EE;
+  --info: #2563C8; --info-bg: #EAF1FB;
+  --warn: #9A5B06; --warn-bg: #FDF5E2;
+  --neg: #C2362F;  --neg-bg: #FCEBEA;
+  --neu: #8A8992;  --neu-bg: #F1F1F3;
+  --chart-sent: #D4D3D8;
+  --chart-reply: #4A3AC2;
+  --shadow-panel: 0 1px 2px rgba(20, 20, 30, .05), 0 0 0 1px rgba(20, 20, 30, .02);
+  --shadow-pop: 0 12px 32px -12px rgba(20, 20, 30, .25), 0 2px 6px rgba(20, 20, 30, .06);
+  --glow: radial-gradient(60% 120% at 0% 0%, rgba(74, 58, 194, .07), transparent 60%), radial-gradient(50% 120% at 100% 0%, rgba(22, 200, 232, .07), transparent 60%);
+  --font: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --app: #111113; --bg: #161619; --card: #1C1C20; --hover: #232328; --nav-sel: #26262B; --muted: #26262B;
+    --line: #2A2A2F; --input: #3A3A41; --fg: #F2F2F4; --fg-2: #B4B3BD; --fg-3: #9B9AA4;
+    --primary: #A99CFF; --primary-hover: #BDB3FF; --primary-soft: #2A2547; --primary-line: #3E3670; --on-primary: #131316;
+    --pos: #6FD9A0; --pos-bg: #173326; --info: #8FB8F5; --info-bg: #18294A;
+    --warn: #F2C063; --warn-bg: #352A12; --neg: #F59A92; --neg-bg: #3A1C1B; --neu: #9B9AA4; --neu-bg: #26262B;
+    --chart-sent: #3F3F46; --chart-reply: #A99CFF;
+    --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, .04);
+    --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, .6);
+    --glow: radial-gradient(60% 120% at 0% 0%, rgba(169, 156, 255, .12), transparent 60%), radial-gradient(50% 120% at 100% 0%, rgba(22, 200, 232, .07), transparent 60%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --app: #111113; --bg: #161619; --card: #1C1C20; --hover: #232328; --nav-sel: #26262B; --muted: #26262B;
+  --line: #2A2A2F; --input: #3A3A41; --fg: #F2F2F4; --fg-2: #B4B3BD; --fg-3: #9B9AA4;
+  --primary: #A99CFF; --primary-hover: #BDB3FF; --primary-soft: #2A2547; --primary-line: #3E3670; --on-primary: #131316;
+  --pos: #6FD9A0; --pos-bg: #173326; --info: #8FB8F5; --info-bg: #18294A;
+  --warn: #F2C063; --warn-bg: #352A12; --neg: #F59A92; --neg-bg: #3A1C1B; --neu: #9B9AA4; --neu-bg: #26262B;
+  --chart-sent: #3F3F46; --chart-reply: #A99CFF;
+  --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, .04);
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, .6);
+  --glow: radial-gradient(60% 120% at 0% 0%, rgba(169, 156, 255, .12), transparent 60%), radial-gradient(50% 120% at 100% 0%, rgba(22, 200, 232, .07), transparent 60%);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { min-height: 100%; }
+body { margin: 0; background: var(--app); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.5;
+  letter-spacing: -0.005em; -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3, p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tnum { font-variant-numeric: tabular-nums; }
+.muted { color: var(--fg-3); }
+
+/* sidebar */
+.side { position: fixed; inset: 0 auto 0 0; width: 240px; padding: 16px 12px; display: flex; flex-direction: column; gap: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+.brand img { width: 26px; height: 26px; object-fit: contain; border-radius: 6px; background: #FFFFFF; padding: 2px; }
+.brand b { display: block; font-size: 13px; font-weight: 600; line-height: 16px; }
+.brand span { display: block; font-size: 11px; color: var(--fg-3); line-height: 14px; }
+.nav { display: grid; gap: 2px; }
+.eyebrow { padding: 0 8px 4px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .06em; color: var(--fg-3); }
+.navlink { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; font-size: 13px; font-weight: 500;
+  color: var(--fg-2); border: 0; background: none; width: 100%; text-align: left; }
+.navlink svg { color: var(--fg-3); }
+.navlink:hover { background: var(--hover); color: var(--fg); }
+.navlink[aria-current="page"] { background: var(--nav-sel); color: var(--fg); }
+.navlink[aria-current="page"] svg { color: var(--fg); }
+.badge { margin-left: auto; border-radius: 999px; background: var(--primary); color: var(--on-primary); font-size: 11px; font-weight: 600; line-height: 18px; padding: 0 6px; }
+.badge.soft { background: var(--muted); color: var(--fg-2); }
+.side-foot { margin-top: auto; }
+.me { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow-panel); }
+.avatar { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 11px; font-weight: 600;
+  background: var(--primary-soft); color: var(--primary); }
+.avatar.sm { width: 20px; height: 20px; font-size: 9.5px; }
+.me b { display: block; font-size: 13px; font-weight: 500; line-height: 16px; }
+.me > div span { display: block; font-size: 11px; color: var(--fg-3); line-height: 14px; }
+.me .iconbtn { margin-left: auto; }
+
+/* frame */
+.shell { padding: 8px 8px 8px 240px; min-height: 100vh; }
+.frame { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-panel); height: calc(100vh - 16px);
+  height: calc(100dvh - 16px); display: flex; flex-direction: column; overflow: hidden; }
+.topbar { position: sticky; top: 0; z-index: 20; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 20px; flex: none;
+  border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); border-radius: 12px 12px 0 0; }
+.crumb { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; }
+.crumb span { color: var(--fg-3); }
+.crumb b { font-weight: 500; }
+.topbar .right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.fresh { font-size: 12px; color: var(--fg-3); white-space: nowrap; }
+.iconbtn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 6px; border: 0; background: transparent; color: var(--fg-2); flex: none; }
+.iconbtn:hover { background: var(--hover); color: var(--fg); }
+.menu-btn { display: none; }
+.drybar { background: var(--warn-bg); color: var(--warn); font-size: 12.5px; padding: 7px 20px; border-bottom: 1px solid var(--line); }
+
+/* buttons, inputs, chips */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--card); font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: var(--shadow-panel); }
+.btn:hover { background: var(--hover); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.btn.primary:hover { background: var(--primary-hover); }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; color: var(--fg-2); }
+.btn.ghost:hover { background: var(--hover); color: var(--fg); }
+.btn.danger { color: var(--neg); }
+.btn[disabled] { opacity: .55; cursor: default; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.input, .select, .textarea { width: 100%; border-radius: 7px; border: 1px solid var(--input); background: var(--bg); font-size: 13px; }
+.input, .select { height: 34px; padding: 0 10px; }
+.textarea { padding: 10px 12px; resize: vertical; min-height: 120px; line-height: 1.55; }
+.input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 7px; border-radius: 999px; font-size: 11.5px; font-weight: 500;
+  background: var(--neu-bg); color: var(--neu); white-space: nowrap; flex: none; }
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.chip.pos { background: var(--pos-bg); color: var(--pos); }
+.chip.info { background: var(--info-bg); color: var(--info); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+.chip.neg { background: var(--neg-bg); color: var(--neg); }
+.chip.pri { background: var(--primary-soft); color: var(--primary); }
+.chip.plain::before { display: none; }
+
+/* CRM layout */
+.view { flex: 1; min-height: 0; display: flex; overflow-y: auto; }
+#v-leads { overflow: hidden; }
+.crm { flex: 1; display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); min-height: 0; }
+.list-pane { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.list-head { padding: 14px 14px 10px; display: grid; gap: 10px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; gap: 2px; background: var(--muted); padding: 2px; border-radius: 8px; }
+.tab { flex: 1; height: 28px; border: 0; border-radius: 6px; background: transparent; font-size: 12.5px; font-weight: 500; color: var(--fg-2);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
+.tab[aria-selected="true"] { background: var(--card); color: var(--fg); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.tab .n { font-size: 11px; color: var(--fg-3); }
+.filters { display: flex; gap: 8px; }
+.filters .input { flex: 1; min-width: 0; }
+.filters .select { width: auto; }
+.list { overflow-y: auto; flex: 1; min-height: 0; }
+.row { display: grid; gap: 4px; padding: 12px 14px; border-bottom: 1px solid var(--line); cursor: pointer; position: relative; background: none;
+  border-left: 0; border-right: 0; border-top: 0; width: 100%; text-align: left; }
+.row:hover { background: var(--hover); }
+.row[aria-current="true"] { background: var(--primary-soft); }
+.row[aria-current="true"]::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 0 3px 3px 0; background: var(--primary); }
+.row .l1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.row .l1 b { font-weight: 600; font-size: 13.5px; }
+.row .l1 .when { margin-left: auto; font-size: 11.5px; color: var(--fg-3); white-space: nowrap; }
+.row .l2 { font-size: 12.5px; color: var(--fg-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.row .l3 { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--fg-3); min-width: 0; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); flex: none; }
+.empty { padding: 40px 20px; text-align: center; color: var(--fg-3); font-size: 13px; display: grid; gap: 6px; justify-items: center; }
+.empty b { color: var(--fg); font-weight: 500; font-size: 14px; }
+
+.detail { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.d-head { padding: 16px 24px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.d-top { display: flex; align-items: flex-start; gap: 12px; }
+.d-top h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3; }
+.d-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12.5px; color: var(--fg-2); }
+.d-meta a:hover { text-decoration: underline; }
+.d-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.d-actions .spacer { flex: 1; }
+.owner { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--fg-2); }
+.back { display: none; }
+.d-body { flex: 1; overflow-y: auto; padding: 20px 24px 8px; min-height: 0; }
+.thread { display: grid; gap: 14px; max-width: 760px; }
+.msg { border: 1px solid var(--line); border-radius: 10px; background: var(--card); box-shadow: var(--shadow-panel); min-width: 0; }
+.msg.in { border-color: var(--primary-line); }
+.msg.note { background: var(--warn-bg); border-color: transparent; box-shadow: none; }
+.msg.failed { border-color: var(--neg); }
+.m-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; font-size: 12.5px; min-width: 0; flex-wrap: wrap; }
+.m-head b { font-weight: 600; }
+.m-head .when { margin-left: auto; color: var(--fg-3); font-size: 11.5px; white-space: nowrap; }
+.m-subj { padding: 4px 14px 0; font-size: 13px; font-weight: 500; }
+.m-text { padding: 8px 14px 12px; font-size: 13.5px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
+.m-text.clamp { max-height: 9.5em; overflow: hidden; -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+.m-ai { margin: 0 14px 10px; padding: 8px 10px; border-radius: 8px; background: var(--muted); font-size: 12.5px; color: var(--fg-2); }
+.m-ai b { color: var(--fg); font-weight: 500; }
+.m-foot { display: flex; gap: 6px; padding: 0 10px 10px; flex-wrap: wrap; }
+.missing { color: var(--fg-3); font-style: italic; }
+
+.composer { border-top: 1px solid var(--line); padding: 12px 24px 16px; display: grid; gap: 8px; background: var(--bg); }
+.c-tabs { display: flex; gap: 4px; align-items: center; }
+.c-tabs .tab { flex: none; padding: 0 12px; }
+.c-meta { font-size: 12px; color: var(--fg-3); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.c-meta b { color: var(--fg-2); font-weight: 500; }
+.c-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.c-foot .hint { font-size: 12px; color: var(--fg-3); margin-right: auto; }
+.locked { padding: 14px 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-2); background: var(--muted); }
+
+/* team & account */
+.page { flex: 1; padding: 28px 32px 40px; max-width: 1080px; width: 100%; margin: 0 auto; display: grid; gap: 20px; align-content: start; }
+.page h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+.page .lead { color: var(--fg-2); font-size: 13.5px; margin-top: 4px; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-panel); min-width: 0; }
+.panel h3 { font-size: 14px; font-weight: 600; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.formgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; padding: 16px; }
+.formgrid label { display: grid; gap: 5px; font-size: 12.5px; font-weight: 500; }
+.formgrid .full { grid-column: 1 / -1; }
+.formgrid .hint { font-weight: 400; color: var(--fg-3); }
+.pw { display: flex; gap: 6px; }
+.formfoot { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; flex-wrap: wrap; }
+.note-ok { font-size: 12.5px; color: var(--pos); }
+.note-err { font-size: 12.5px; color: var(--neg); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 500; font-size: 12px; color: var(--fg-3); padding: 10px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 16px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td .who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+td .who b { display: block; font-weight: 500; }
+td .who div span { display: block; font-size: 12px; color: var(--fg-3); }
+td .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.tablewrap { overflow-x: auto; }
+.secret { margin: 0 16px 16px; padding: 12px 14px; border-radius: 8px; background: var(--primary-soft); border: 1px solid var(--primary-line); font-size: 13px; display: grid; gap: 6px; }
+.secret code { font-family: var(--mono); font-size: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; justify-self: start; user-select: all; }
+
+.toast { position: fixed; right: 24px; bottom: 24px; z-index: 60; background: var(--fg); color: var(--bg);
+  padding: 9px 14px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow-pop); max-width: calc(100vw - 32px); }
+.toast.err { background: var(--neg); color: #FFFFFF; }
+.overlay { position: fixed; inset: 0; background: rgba(10, 10, 15, .35); z-index: 40; }
+
+@media (max-width: 1100px) { .crm { grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); } }
+@media (max-width: 860px) {
+  .toast { right: 16px; left: 16px; bottom: 16px; }
+  .side { transform: translateX(-100%); transition: transform .2s; z-index: 50; background: var(--app); box-shadow: var(--shadow-pop); }
+  .side.open { transform: none; }
+  .shell { padding: 0; }
+  .frame { border-radius: 0; border: 0; height: 100vh; height: 100dvh; }
+  .topbar { border-radius: 0; padding: 0 12px; }
+  .menu-btn { display: grid; }
+  .crm { grid-template-columns: minmax(0, 1fr); }
+  .crm.has-sel .list-pane { display: none; }
+  .crm:not(.has-sel) .detail { display: none; }
+  .list-pane { border-right: 0; }
+  .back { display: inline-flex; }
+  .d-head, .d-body, .composer { padding-left: 16px; padding-right: 16px; }
+  .detail { overflow-y: auto; }
+  .d-body { flex: none; overflow: visible; }
+  .textarea { min-height: 96px; }
+  .page { padding: 20px 16px 32px; }
+  .formgrid { grid-template-columns: minmax(0, 1fr); }
+  .fresh { display: none; }
+  thead { display: none; }
+  table, tbody, tr, td { display: block; }
+  tr { border-bottom: 1px solid var(--line); padding: 8px 0; }
+  td { border: 0; padding: 4px 16px; }
+  td .acts { justify-content: flex-start; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></symbol>
+</svg>
+
+<aside class="side" id="side" aria-label="Main">
+  <div class="brand"><img src="data:image/png;base64,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" alt=""><div><b>LeadBot</b><span>TalkSasa CRM</span></div></div>
+  <div>
+    <p class="eyebrow">Leads</p>
+    <nav class="nav">
+      <button class="navlink" data-go="open"><svg class="i"><use href="#i-inbox"/></svg>Open leads<span class="badge" id="nb-open" hidden></span></button>
+      <button class="navlink" data-go="mine"><svg class="i"><use href="#i-user"/></svg>My leads<span class="badge soft" id="nb-mine" hidden></span></button>
+      <button class="navlink" data-go="closed"><svg class="i"><use href="#i-archive"/></svg>Won and lost</button>
+    </nav>
+  </div>
+  <div>
+    <p class="eyebrow">Workspace</p>
+    <nav class="nav">
+      <a class="navlink" href="/"><svg class="i"><use href="#i-grid"/></svg>Dashboard</a>
+      <button class="navlink" data-go="team" id="nav-team" hidden><svg class="i"><use href="#i-users"/></svg>Team</button>
+      <button class="navlink" data-go="account"><svg class="i"><use href="#i-user"/></svg>My account</button>
+    </nav>
+  </div>
+  <div class="side-foot">
+    <div class="me">
+      <span class="avatar" id="me-av">?</span>
+      <div class="truncate"><b class="truncate" id="me-name">…</b><span id="me-role"></span></div>
+      <button class="iconbtn" id="logout" title="Sign out" aria-label="Sign out"><svg class="i"><use href="#i-out"/></svg></button>
+    </div>
+  </div>
+</aside>
+<div class="overlay" id="overlay" hidden></div>
+
+<div class="shell">
+  <div class="frame">
+    <header class="topbar">
+      <button class="iconbtn menu-btn" id="menu" aria-label="Open menu"><svg class="i"><use href="#i-menu"/></svg></button>
+      <div class="crumb"><span>CRM</span><span>/</span><b id="crumb">Open leads</b></div>
+      <div class="right">
+        <span class="fresh" id="fresh"></span>
+        <button class="iconbtn" id="theme" title="Switch light or dark" aria-label="Switch light or dark"><svg class="i"><use href="#i-sun"/></svg></button>
+        <button class="btn sm" id="refresh"><svg class="i"><use href="#i-refresh"/></svg>Refresh</button>
+      </div>
+    </header>
+    <div class="drybar" id="drybar" hidden>Test mode is on (CRM_DRY_RUN=true). Replies are saved here but not emailed to anyone.</div>
+
+    <div class="view" id="v-leads">
+      <div class="crm" id="crm">
+        <section class="list-pane" aria-label="Leads">
+          <div class="list-head">
+            <div class="tabs" role="tablist" id="subtabs">
+              <button class="tab" role="tab" data-f="waiting">Waiting <span class="n" id="n-waiting"></span></button>
+              <button class="tab" role="tab" data-f="unclaimed">Unclaimed <span class="n" id="n-unclaimed"></span></button>
+              <button class="tab" role="tab" data-f="all">All</button>
+            </div>
+            <div class="filters">
+              <input class="input" id="q" type="search" placeholder="Search company, email, message" aria-label="Search leads">
+              <select class="select" id="owner-f" aria-label="Filter by person"><option value="">Anyone</option></select>
+            </div>
+          </div>
+          <div class="list" id="list"></div>
+        </section>
+        <section class="detail" id="detail" aria-label="Lead"></section>
+      </div>
+    </div>
+
+    <div class="view" id="v-team" hidden>
+      <div class="page">
+        <div><h1>Team</h1><p class="lead">Admins can manage people and reassign any lead. Sales can see every open lead, claim them and reply.</p></div>
+        <div class="panel">
+          <h3>Add a person</h3>
+          <form id="f-add" novalidate>
+            <div class="formgrid">
+              <label>Full name <input class="input" name="name" required autocomplete="off"></label>
+              <label>Email <input class="input" name="email" type="email" required autocomplete="off"></label>
+              <label><span>Phone for their email signature <span class="hint">(optional)</span></span><input class="input" name="phone" autocomplete="off" placeholder="+254 7…"></label>
+              <label>Role
+                <select class="select" name="role"><option value="sales">Sales</option><option value="admin">Admin</option></select></label>
+              <label class="full"><span>Temporary password <span class="hint">· they'll choose their own the first time they sign in</span></span>
+                <span class="pw"><input class="input" name="temp" id="add-temp" autocomplete="new-password" required minlength="10">
+                <button class="btn" type="button" id="gen">Generate</button></span></label>
+            </div>
+            <div class="formfoot"><button class="btn primary" type="submit">Add person</button><span id="add-msg"></span></div>
+          </form>
+          <div class="secret" id="add-secret" hidden></div>
+        </div>
+        <div class="panel">
+          <h3>People</h3>
+          <div class="secret" id="reset-secret" hidden style="margin-top:16px"></div>
+          <div class="tablewrap"><table>
+            <thead><tr><th>Person</th><th>Role</th><th>Open leads</th><th>Replies sent</th><th>Last sign-in</th><th></th></tr></thead>
+            <tbody id="people"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="view" id="v-account" hidden>
+      <div class="page" style="max-width:640px">
+        <div><h1>My account</h1><p class="lead" id="acct-lead"></p></div>
+        <div class="panel">
+          <h3>Change password</h3>
+          <form id="f-pw" novalidate>
+            <div class="formgrid">
+              <label class="full">Current password <input class="input" type="password" name="cur" autocomplete="current-password" required></label>
+              <label><span>New password <span class="hint">(at least 10 characters)</span></span><input class="input" type="password" name="n1" autocomplete="new-password" required></label>
+              <label>New password again <input class="input" type="password" name="n2" autocomplete="new-password" required></label>
+            </div>
+            <div class="formfoot"><button class="btn primary" type="submit">Save password</button><span id="pw-msg"></span></div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const initials = (n) => (n || "?").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join("");
+const LABELS = { interested: ["Interested", "pos"], question: ["Question", "info"], needs_review: ["Needs review", "warn"],
+  not_interested: ["Not interested", ""], out_of_office: ["Auto-reply", ""], unsubscribe: ["Unsubscribed", "neg"], bounce: ["Bounced", "neg"] };
+const STAGES = { replied: ["Replied", "pri"], meeting: ["Meeting set", "info"], client: ["Client", "pos"], lost: ["Lost", ""],
+  sent: ["Awaiting reply", ""], unsubscribed: ["Unsubscribed", "neg"], bounced: ["Bounced", "neg"], invalid: ["Invalid email", "neg"],
+  new: ["Found", ""], verified: ["Ready to email", ""] };
+const chip = (map, k) => { const [t, c] = map[k] || [k || "—", ""]; return `<span class="chip ${c}">${esc(t)}</span>`; };
+
+const state = { me: null, dryRun: false, fromEmail: "", view: "open", filter: "waiting", leads: [], counts: {}, users: [],
+  sel: null, detail: null, mode: "reply", replyTo: null, drafts: {}, busy: 0, loadedAt: null };
+
+function toast(msg, err) {
+  const t = $("toast"); t.textContent = msg; t.className = "toast" + (err ? " err" : ""); t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, err ? 6000 : 3000);
+}
+async function api(url, opts = {}) {
+  const r = await fetch(url, { credentials: "same-origin", headers: opts.body ? { "Content-Type": "application/json" } : {}, ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (r.status === 401) { location.replace("/login?next=" + encodeURIComponent(location.pathname + location.hash)); throw new Error("Please sign in."); }
+  let data = {}; try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Something went wrong (" + r.status + ").");
+  return data;
+}
+async function act(fn, okMsg) {
+  state.busy++;
+  try { const out = await fn(); if (okMsg) toast(okMsg); return out; }
+  catch (e) { toast(e.message, true); throw e; }
+  finally { state.busy--; }
+}
+
+function when(ts) {
+  if (!ts) return "";
+  const d = new Date(ts.length === 10 ? ts + "T00:00:00" : ts); if (isNaN(d)) return ts;
+  const diff = (Date.now() - d) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400 && d.getDate() === new Date().getDate()) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diff < 6 * 86400) return d.toLocaleDateString([], { weekday: "short" }) + (ts.length > 10 ? " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
+  return d.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+const fullWhen = (ts) => { if (!ts) return ""; const d = new Date(ts.length === 10 ? ts + "T00:00:00" : ts); return isNaN(d) ? ts : d.toLocaleString(); };
+
+/* ---------------- theme ---------------- */
+try { const t = localStorage.getItem("leadbot-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+$("theme").onclick = () => {
+  const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = dark ? "light" : "dark"; document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("leadbot-theme", next); } catch (e) {}
+};
+
+/* ---------------- navigation ---------------- */
+const TITLES = { open: "Open leads", mine: "My leads", closed: "Won and lost", team: "Team", account: "My account" };
+function go(view, opts = {}) {
+  if (view === "team" && state.me?.role !== "admin") view = "open";
+  state.view = view;
+  $("v-leads").hidden = !["open", "mine", "closed"].includes(view);
+  $("v-team").hidden = view !== "team"; $("v-account").hidden = view !== "account";
+  document.querySelectorAll("[data-go]").forEach(b => b.dataset.go === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  $("crumb").textContent = TITLES[view];
+  $("subtabs").hidden = view === "closed";
+  closeMenu();
+  if (!opts.keepHash) setHash();
+  if (view === "team") loadTeam();
+  if (view === "account") $("acct-lead").textContent = `${state.me.name} · ${state.me.email} · ${state.me.role === "admin" ? "Admin" : "Sales"}`;
+  if (!$("v-leads").hidden) { if (!opts.keepSel) { state.sel = null; state.detail = null; } loadLeads(); }
+}
+function setHash() {
+  const h = state.sel && !$("v-leads").hidden ? `#${state.view}/${state.sel}` : `#${state.view}`;
+  if (location.hash !== h) history.replaceState(null, "", h);
+}
+document.querySelectorAll("[data-go]").forEach(b => b.addEventListener("click", () => go(b.dataset.go)));
+function closeMenu() { $("side").classList.remove("open"); $("overlay").hidden = true; }
+$("menu").onclick = () => { $("side").classList.add("open"); $("overlay").hidden = false; };
+$("overlay").onclick = closeMenu;
+$("logout").onclick = async () => { try { await api("/api/auth/logout", { method: "POST" }); } catch (e) {} location.replace("/login"); };
+$("refresh").onclick = () => refreshAll(true);
+
+/* ---------------- lead list ---------------- */
+async function loadLeads() {
+  const scope = state.view === "closed" ? "closed" : state.view === "mine" ? "mine" : "open";
+  try {
+    const d = await api("/api/crm/leads?scope=" + scope);
+    if (scope !== (state.view === "closed" ? "closed" : state.view === "mine" ? "mine" : "open")) return;
+    state.leads = d.leads; state.loadedAt = new Date();
+    if (scope === "open") state.counts = d.counts;
+    updateBadges(); renderList();
+    if (state.sel && !state.leads.some(l => l.id === state.sel) && !state.detail) state.sel = null;
+    if (state.sel) loadDetail(state.sel, { quiet: true });
+    else renderDetail();
+    $("fresh").textContent = "Updated " + state.loadedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (e) {
+    $("list").innerHTML = `<div class="empty"><b>Couldn't load leads</b>${esc(e.message)}</div>`;
+  }
+}
+async function refreshCounts() {
+  if (state.view === "open") return;
+  try { const d = await api("/api/crm/leads?scope=open"); state.counts = d.counts; updateBadges(); } catch (e) {}
+}
+function updateBadges() {
+  const c = state.counts;
+  $("nb-open").textContent = c.waiting || ""; $("nb-open").hidden = !c.waiting;
+  $("nb-mine").textContent = c.mine || ""; $("nb-mine").hidden = !c.mine;
+  $("n-waiting").textContent = c.waiting ?? ""; $("n-unclaimed").textContent = c.unclaimed ?? "";
+}
+function visibleLeads() {
+  const q = $("q").value.trim().toLowerCase(), owner = $("owner-f").value;
+  return state.leads.filter(l => {
+    if (l.id === state.sel) return true; // keep the open lead in view after you answer it
+    if (state.view !== "closed") {
+      if (state.filter === "waiting" && !l.waiting) return false;
+      if (state.filter === "unclaimed" && l.claimed_by) return false;
+    }
+    if (owner === "none" && l.claimed_by) return false;
+    if (owner && owner !== "none" && String(l.claimed_by) !== owner) return false;
+    if (q && ![l.company, l.email, l.industry, l.last_summary, l.owner].some(v => (v || "").toLowerCase().includes(q))) return false;
+    return true;
+  });
+}
+function renderList() {
+  document.querySelectorAll("#subtabs .tab").forEach(t => t.setAttribute("aria-selected", t.dataset.f === state.filter));
+  const rows = visibleLeads();
+  if (!rows.length) {
+    const msg = state.view === "closed" ? ["Nothing closed yet", "Leads you mark Client or Lost show up here."]
+      : state.view === "mine" ? ["No leads claimed by you", "Open a lead and press Claim to make it yours."]
+      : state.filter === "waiting" ? ["All caught up", "No one is waiting for an answer. Check the All tab for older conversations."]
+      : ["No leads here", "When a lead replies, the bot puts them in this list."];
+    $("list").innerHTML = `<div class="empty"><b>${msg[0]}</b>${msg[1]}</div>`; return;
+  }
+  $("list").innerHTML = rows.map(l => `
+    <button class="row" data-id="${l.id}" ${l.id === state.sel ? 'aria-current="true"' : ""}>
+      <span class="l1">${l.waiting ? '<span class="dot" title="Waiting for an answer"></span>' : ""}<b class="truncate">${esc(l.company || l.email)}</b>
+        <span class="when">${esc(when(l.last_received))}</span></span>
+      <span class="l2">${esc(l.last_summary || "No message text saved.")}</span>
+      <span class="l3">${l.last_label ? chip(LABELS, l.last_label) : ""}${chip(STAGES, l.status)}
+        <span class="truncate" style="margin-left:auto">${l.owner ? (l.mine ? "You" : esc(l.owner)) : "Unclaimed"}</span></span>
+    </button>`).join("");
+}
+$("list").addEventListener("click", (e) => { const r = e.target.closest(".row"); if (r) openLead(+r.dataset.id); });
+$("subtabs").addEventListener("click", (e) => { const t = e.target.closest(".tab"); if (t) { state.filter = t.dataset.f; renderList(); } });
+$("q").addEventListener("input", renderList);
+$("owner-f").addEventListener("change", renderList);
+
+/* ---------------- lead detail ---------------- */
+function openLead(id) {
+  saveDraft();
+  state.sel = id; state.detail = null; state.replyTo = null; state.mode = "reply";
+  renderList(); setHash(); renderDetail(); loadDetail(id);
+}
+async function loadDetail(id, { quiet } = {}) {
+  try {
+    const d = await api("/api/crm/leads/" + id);
+    if (state.sel !== id) return;
+    if (quiet && state.busy) return;
+    const focused = document.activeElement?.id;
+    saveDraft(); state.detail = d; renderDetail();
+    if (focused === "c-text") { const t = $("c-text"); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
+  } catch (e) {
+    if (state.sel !== id) return;
+    if (!quiet) $("detail").innerHTML = `<div class="empty"><b>Couldn't open this lead</b>${esc(e.message)}</div>`;
+  }
+}
+function saveDraft() { const t = $("c-text"); if (t && state.sel) state.drafts[state.sel + ":" + state.mode] = t.value; }
+
+function renderDetail() {
+  $("crm").classList.toggle("has-sel", !!state.sel);
+  const el = $("detail");
+  if (!state.sel) { el.innerHTML = `<div class="empty" style="margin:auto"><b>Pick a lead</b>Their emails, replies and notes show here.</div>`; return; }
+  if (!state.detail) { el.innerHTML = `<div class="empty" style="margin:auto">Loading…</div>`; return; }
+  const { lead, thread, can_reply, can_act } = state.detail, me = state.me, admin = me.role === "admin";
+  const site = lead.website ? `<a href="${esc(/^https?:/i.test(lead.website) ? lead.website : "https://" + lead.website)}" target="_blank" rel="noopener noreferrer">${esc(lead.website.replace(/^https?:\/\//, "").replace(/\/$/, ""))}</a>` : "";
+  const owner = lead.claimed_by
+    ? `<span class="owner"><span class="avatar sm">${esc(initials(lead.owner))}</span>${lead.mine ? "You're handling this" : esc(lead.owner) + " is handling this"}</span>`
+    : `<span class="owner muted">Nobody has claimed this lead</span>`;
+  let buttons = "";
+  if (!lead.claimed_by) buttons += `<button class="btn primary sm" data-a="claim">Claim lead</button>`;
+  if (lead.claimed_by && (lead.mine || admin)) buttons += `<button class="btn ghost sm" data-a="release">Release</button>`;
+  if (admin) buttons += `<select class="select" data-a="assign" style="width:auto;height:28px;font-size:12.5px" aria-label="Assign to">
+      <option value="">Assign to…</option>${state.users.filter(u => u.active).map(u => `<option value="${u.id}">${esc(u.name)}</option>`).join("")}</select>`;
+  const stageSel = can_act && !["unsubscribed", "bounced", "invalid"].includes(lead.status)
+    ? `<select class="select" data-a="stage" style="width:auto;height:28px;font-size:12.5px" aria-label="Stage">
+        ${["replied", "meeting", "client", "lost"].map(s => `<option value="${s}" ${lead.status === s ? "selected" : ""}>${STAGES[s][0]}</option>`).join("")}
+        ${["replied", "meeting", "client", "lost"].includes(lead.status) ? "" : `<option selected disabled>${esc((STAGES[lead.status] || [lead.status])[0])}</option>`}
+      </select>` : chip(STAGES, lead.status);
+
+  el.innerHTML = `
+    <div class="d-head">
+      <div class="d-top">
+        <button class="iconbtn back" data-a="back" aria-label="Back to list"><svg class="i"><use href="#i-back"/></svg></button>
+        <div style="min-width:0;flex:1"><h2>${esc(lead.company || lead.email)}</h2>
+          <div class="d-meta"><span>${esc(lead.email || "")}</span>${lead.industry ? `<span>${esc(lead.industry.replace(/_/g, " "))}</span>` : ""}${site}</div></div>
+      </div>
+      <div class="d-actions">${owner}<span class="spacer"></span>${buttons}${stageSel}</div>
+    </div>
+    <div class="d-body"><div class="thread">${thread.length ? thread.map(msgHTML).join("") : `<p class="muted">Nothing in this conversation yet.</p>`}</div></div>
+    ${composerHTML(lead, can_reply, can_act)}`;
+  const body = el.querySelector(".d-body"); body.scrollTop = body.scrollHeight;
+  const ta = $("c-text"); if (ta) ta.value = state.drafts[state.sel + ":" + state.mode] || "";
+}
+
+function msgHTML(m) {
+  const text = m.body ? esc(m.body) : `<span class="missing">The text of this email wasn't saved.</span>`;
+  const long = (m.body || "").length > 600;
+  if (m.kind === "note") return `<article class="msg note"><div class="m-head"><span class="avatar sm">${esc(initials(m.who))}</span><b>${esc(m.who)}</b><span class="muted">added a note</span><span class="when" title="${esc(fullWhen(m.at))}">${esc(when(m.at))}</span></div><div class="m-text">${text}</div></article>`;
+  if (m.kind === "in") {
+    const ai = m.summary ? `<div class="m-ai"><b>AI summary:</b> ${esc(m.summary)}</div>` : "";
+    const actions = state.detail.can_act ? `<div class="m-foot">${state.detail.can_reply ? `<button class="btn sm" data-a="reply-to" data-id="${m.id}">Reply to this</button>` : ""}${!m.handled && ["interested", "question", "needs_review"].includes(m.label) ? `<button class="btn ghost sm" data-a="done" data-id="${m.id}"><svg class="i"><use href="#i-check"/></svg>Mark done</button>` : ""}</div>` : "";
+    return `<article class="msg in"><div class="m-head"><b>${esc(m.from || m.who)}</b>${m.label ? chip(LABELS, m.label) : ""}${!m.handled && ["interested", "question", "needs_review"].includes(m.label) ? '<span class="chip pri plain">Waiting</span>' : ""}<span class="when" title="${esc(fullWhen(m.at))}">${esc(when(m.at))}</span></div>
+      ${m.subject ? `<div class="m-subj">${esc(m.subject)}</div>` : ""}<div class="m-text ${long ? "clamp" : ""}">${text}</div>${long ? `<div class="m-foot"><button class="btn ghost sm" data-a="expand">Show full email</button></div>` : ""}${ai}${actions}</article>`;
+  }
+  const who = m.kind === "bot" ? `LeadBot <span class="muted">· ${m.step > 1 ? "follow-up " + (m.step - 1) : "first email"}</span>` : esc(m.who) + (m.to ? ` <span class="muted">to ${esc(m.to)}</span>` : "");
+  const st = m.status === "dry_run" ? '<span class="chip warn plain">Test only, not sent</span>' : m.status === "failed" ? '<span class="chip neg plain">Failed to send</span>' : "";
+  return `<article class="msg ${m.status === "failed" ? "failed" : ""}"><div class="m-head"><b>${who}</b>${st}<span class="when" title="${esc(fullWhen(m.at))}">${esc(when(m.at))}</span></div>
+    ${m.subject ? `<div class="m-subj">${esc(m.subject)}</div>` : ""}<div class="m-text ${long ? "clamp" : ""}">${text}</div>${long ? `<div class="m-foot"><button class="btn ghost sm" data-a="expand">Show full email</button></div>` : ""}${m.error ? `<div class="m-ai" style="color:var(--neg)">${esc(m.error)}</div>` : ""}</article>`;
+}
+
+function composerHTML(lead, canReply, canAct) {
+  if (!canAct) return `<div class="locked">${esc(lead.owner)} is handling this lead, so only they or an admin can reply. You can still read the conversation.</div>`;
+  const ins = state.detail.thread.filter(m => m.kind === "in" && !["bounce", "out_of_office"].includes(m.label));
+  const target = ins.find(m => m.id === state.replyTo) || ins[ins.length - 1];
+  const to = (target?.from || lead.email || "").replace(/.*<([^>]+)>.*/, "$1");
+  const tabs = `<div class="c-tabs tabs" role="tablist" style="display:inline-flex;justify-self:start">
+      ${canReply ? `<button class="tab" role="tab" data-a="mode" data-m="reply" aria-selected="${state.mode === "reply"}">Reply</button>` : ""}
+      <button class="tab" role="tab" data-a="mode" data-m="note" aria-selected="${state.mode === "note" || !canReply}">Internal note</button></div>`;
+  if (state.mode === "note" || !canReply) {
+    return `<div class="composer">${tabs}${canReply ? "" : `<p class="c-meta">This lead unsubscribed or their email bounced, so you can't email them. Notes still work.</p>`}
+      <textarea class="textarea" id="c-text" rows="3" placeholder="Only your team sees notes, e.g. called them, wants a quote for 50,000 SMS"></textarea>
+      <div class="c-foot"><span class="hint">Ctrl + Enter to save</span><button class="btn primary" data-a="save-note">Save note</button></div></div>`;
+  }
+  const subj = target?.subject ? (/^re:/i.test(target.subject) ? target.subject : "Re: " + target.subject) : "Re: TalkSasa";
+  return `<div class="composer">${tabs}
+    <div class="c-meta"><span><b>To</b> ${esc(to)}</span><span><b>From</b> ${esc(state.me.name)} from TalkSasa &lt;${esc(state.fromEmail)}&gt;</span><span><b>Subject</b> ${esc(subj)}</span>
+      ${target && ins.length > 1 ? `<span>Answering their message from ${esc(when(target.at))}</span>` : ""}</div>
+    <textarea class="textarea" id="c-text" rows="5" placeholder="Write your reply. Your name, TalkSasa and your phone are added at the bottom, and their message is quoted below it."></textarea>
+    <div class="c-foot"><span class="hint">Ctrl + Enter to send${state.dryRun ? " · test mode, nothing is emailed" : ""}</span>
+      <button class="btn primary" data-a="send" data-reply="${target ? target.id : ""}"><svg class="i"><use href="#i-send"/></svg>${state.dryRun ? "Save test reply" : "Send reply"}</button></div></div>`;
+}
+
+$("detail").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-a]"); if (!b || b.tagName === "SELECT") return;
+  const id = state.sel, a = b.dataset.a;
+  if (a === "back") { saveDraft(); state.sel = null; state.detail = null; setHash(); renderList(); renderDetail(); return; }
+  if (a === "expand") { const t = b.closest(".msg").querySelector(".m-text"); t.classList.remove("clamp"); b.parentElement.remove(); return; }
+  if (a === "mode") { saveDraft(); state.mode = b.dataset.m; renderDetail(); $("c-text")?.focus(); return; }
+  if (a === "reply-to") { saveDraft(); state.mode = "reply"; state.replyTo = +b.dataset.id; renderDetail(); $("c-text")?.focus(); return; }
+  b.disabled = true;
+  try {
+    if (a === "claim") await act(() => api(`/api/crm/leads/${id}/claim`, { method: "POST" }), "Lead claimed. It's yours.");
+    if (a === "release") await act(() => api(`/api/crm/leads/${id}/release`, { method: "POST" }), "Lead released.");
+    if (a === "done") await act(() => api(`/api/crm/replies/${b.dataset.id}/done`, { method: "POST" }), "Marked done.");
+    if (a === "save-note") {
+      const text = $("c-text").value.trim(); if (!text) { toast("Write the note first.", true); return; }
+      await act(() => api(`/api/crm/leads/${id}/notes`, { method: "POST", body: { body: text } }), "Note saved.");
+      state.drafts[id + ":note"] = ""; $("c-text").value = "";
+    }
+    if (a === "send") {
+      const text = $("c-text").value.trim(); if (!text) { toast("Write your reply first.", true); return; }
+      const r = await act(() => api(`/api/crm/leads/${id}/reply`, { method: "POST", body: { body: text, reply_id: b.dataset.reply ? +b.dataset.reply : null } }));
+      toast(r.status === "dry_run" ? "Saved as a test reply. Nothing was emailed." : "Reply sent to " + r.to + ".");
+      state.drafts[id + ":reply"] = ""; $("c-text").value = ""; state.replyTo = null;
+    }
+    await Promise.all([loadDetail(id), reloadListOnly()]);
+  } catch (err) { /* toast already shown */ }
+  finally { b.disabled = false; }
+});
+$("detail").addEventListener("change", async (e) => {
+  const s = e.target.closest("select[data-a]"); if (!s) return;
+  const id = state.sel;
+  try {
+    if (s.dataset.a === "stage") await act(() => api(`/api/crm/leads/${id}/status`, { method: "POST", body: { status: s.value } }), "Stage updated.");
+    if (s.dataset.a === "assign" && s.value) {
+      const name = s.options[s.selectedIndex].text;
+      await act(() => api(`/api/crm/leads/${id}/assign`, { method: "POST", body: { user_id: +s.value } }), "Assigned to " + name + ".");
+    }
+  } catch (err) {}
+  await Promise.all([loadDetail(id), reloadListOnly()]);
+});
+$("detail").addEventListener("keydown", (e) => {
+  if (e.target.id === "c-text" && e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault(); $("detail").querySelector('[data-a="send"],[data-a="save-note"]')?.click();
+  }
+});
+async function reloadListOnly() {
+  const scope = state.view === "closed" ? "closed" : state.view === "mine" ? "mine" : "open";
+  try { const d = await api("/api/crm/leads?scope=" + scope); state.leads = d.leads; if (scope === "open") state.counts = d.counts; updateBadges(); renderList(); } catch (e) {}
+  refreshCounts();
+}
+
+/* ---------------- team ---------------- */
+function genPassword() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const a = new Uint32Array(14); crypto.getRandomValues(a);
+  return Array.from(a, n => chars[n % chars.length]).join("").replace(/(.{7})/, "$1-");
+}
+$("gen").onclick = () => { $("add-temp").value = genPassword(); };
+async function loadUsers() {
+  try { const d = await api("/api/crm/users"); state.users = d.users; } catch (e) { state.users = []; }
+  const f = $("owner-f"), cur = f.value;
+  f.innerHTML = `<option value="">Anyone</option><option value="none">Unclaimed</option>` +
+    state.users.filter(u => u.active).map(u => `<option value="${u.id}">${u.id === state.me.id ? "Me" : esc(u.name)}</option>`).join("");
+  f.value = cur;
+}
+async function loadTeam() {
+  await loadUsers();
+  $("people").innerHTML = state.users.map(u => `
+    <tr data-id="${u.id}">
+      <td><div class="who"><span class="avatar">${esc(initials(u.name))}</span><div class="truncate"><b>${esc(u.name)}${u.id === state.me.id ? ' <span class="muted">(you)</span>' : ""}</b><span>${esc(u.email)}${u.phone ? " · " + esc(u.phone) : ""}</span></div></div></td>
+      <td>${u.active ? `<select class="select" data-u="role" style="width:auto;height:28px;font-size:12.5px" aria-label="Role" ${u.id === state.me.id ? "disabled" : ""}>
+          <option value="sales" ${u.role === "sales" ? "selected" : ""}>Sales</option><option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option></select>`
+        : '<span class="chip">Switched off</span>'}${u.active && u.must_change ? ' <span class="chip warn plain">Hasn\'t signed in yet</span>' : ""}</td>
+      <td class="tnum">${u.open_leads}</td><td class="tnum">${u.replies_sent}</td>
+      <td class="muted">${u.last_login ? esc(when(u.last_login)) : "Never"}</td>
+      <td><div class="acts">${u.id === state.me.id ? "" : `<button class="btn sm" data-u="reset">Reset password</button>
+        ${u.active ? `<button class="btn sm danger" data-u="off">Switch off</button>` : `<button class="btn sm" data-u="on">Switch on</button>`}`}</div></td>
+    </tr>`).join("");
+}
+$("people").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-u]"); if (!b) return;
+  const tr = b.closest("tr"), id = +tr.dataset.id, u = state.users.find(x => x.id === id);
+  if (b.dataset.u === "off" && !confirm(`Switch off ${u.name}? They'll be signed out and their open leads go back to Unclaimed.`)) return;
+  b.disabled = true;
+  try {
+    if (b.dataset.u === "reset") {
+      const pw = genPassword();
+      await act(() => api(`/api/crm/users/${id}`, { method: "POST", body: { temp_password: pw } }));
+      showSecret($("reset-secret"), `New temporary password for <b>${esc(u.name)}</b>. Give it to them in person or by phone. They'll choose their own when they sign in.`, pw);
+    }
+    if (b.dataset.u === "off") await act(() => api(`/api/crm/users/${id}`, { method: "POST", body: { active: false } }), u.name + " was switched off.");
+    if (b.dataset.u === "on") await act(() => api(`/api/crm/users/${id}`, { method: "POST", body: { active: true } }), u.name + " was switched on.");
+  } catch (err) {}
+  loadTeam();
+});
+$("people").addEventListener("change", async (e) => {
+  const s = e.target.closest("select[data-u=role]"); if (!s) return;
+  const id = +s.closest("tr").dataset.id;
+  try { await act(() => api(`/api/crm/users/${id}`, { method: "POST", body: { role: s.value } }), "Role updated."); } catch (err) {}
+  loadTeam();
+});
+function showSecret(el, html, pw) {
+  el.innerHTML = `<span>${html}</span><code>${esc(pw)}</code><span class="muted" style="font-size:12px">This is shown only once.</span>`;
+  el.hidden = false;
+}
+$("f-add").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, msg = $("add-msg"), btn = f.querySelector("button[type=submit]");
+  const body = { name: f.name.value.trim(), email: f.email.value.trim(), phone: f.phone.value.trim(), role: f.role.value, temp_password: f.temp.value };
+  msg.className = "note-err";
+  if (!body.name || !body.email) { msg.textContent = "Enter a name and email."; return; }
+  if (body.temp_password.length < 10) { msg.textContent = "The temporary password needs at least 10 characters. Press Generate."; return; }
+  btn.disabled = true; msg.textContent = "";
+  try {
+    await api("/api/crm/users", { method: "POST", body });
+    showSecret($("add-secret"), `<b>${esc(body.name)}</b> can now sign in at <b>${esc(location.origin)}/login</b> with ${esc(body.email)} and this temporary password:`, body.temp_password);
+    f.reset(); msg.className = "note-ok"; msg.textContent = "Added.";
+    loadTeam();
+  } catch (err) { msg.textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+
+/* ---------------- account ---------------- */
+$("f-pw").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, msg = $("pw-msg"); msg.className = "note-err";
+  if (f.n1.value.length < 10) { msg.textContent = "Use at least 10 characters."; return; }
+  if (f.n1.value !== f.n2.value) { msg.textContent = "The two new passwords don't match."; return; }
+  try {
+    await api("/api/auth/password", { method: "POST", body: { current: f.cur.value, new: f.n1.value } });
+    f.reset(); msg.className = "note-ok"; msg.textContent = "Password changed. You were signed out on other devices.";
+  } catch (err) { msg.textContent = err.message; }
+});
+
+/* ---------------- start ---------------- */
+async function refreshAll(manual) {
+  if (state.busy) return;
+  const t = $("c-text"); if (!manual && t && t.value.trim()) { refreshCounts(); return; } // don't disturb someone typing
+  if (!$("v-leads").hidden) await loadLeads(); else { refreshCounts(); if (state.view === "team") loadTeam(); }
+}
+async function start() {
+  let me;
+  try { me = await api("/api/auth/me"); } catch (e) { return; }
+  if (me.user.must_change) { location.replace("/login"); return; }
+  state.me = me.user; state.dryRun = me.dry_run; state.fromEmail = me.from_email || "";
+  $("me-name").textContent = me.user.name; $("me-av").textContent = initials(me.user.name);
+  $("me-role").textContent = me.user.role === "admin" ? "Admin" : "Sales";
+  $("nav-team").hidden = me.user.role !== "admin"; $("drybar").hidden = !me.dry_run;
+  await loadUsers();
+  const [v, sel] = location.hash.slice(1).split("/");
+  if (sel) state.sel = +sel;
+  go(TITLES[v] ? v : "open", { keepSel: true, keepHash: true });
+  if (!sel) setHash();
+  setInterval(() => { if (document.visibilityState === "visible") refreshAll(false); }, 60000);
+}
+start();
+})();
+</script>
