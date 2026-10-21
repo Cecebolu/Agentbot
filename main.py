@@ -121,8 +121,6 @@ def main():
         db.unsubscribe(args[0])
         print(f"{args[0]} unsubscribed.")
     elif cmd == "export":
-        import ranking
-        ranking.save_scores()
         for name, n in db.export(args[0] if args else ".").items():
             print(f"{name}: {n} rows")
     else:

@@ -1,4 +1,5 @@
-"""One follow-up per lead, in the same thread, 5 business days after the first email.
+"""Two follow-ups per lead at most, in the first email's thread, each 5 business days after
+the email before it.
 Temporary database and fake mail server: nothing is sent."""
 from datetime import date
 
@@ -63,9 +64,13 @@ def test_follow_up_goes_in_the_same_thread(world, mail):
     assert msg["Subject"] == "Re: Loan reminders by SMS"
     assert msg["In-Reply-To"] == FIRST_ID and msg["References"] == FIRST_ID
     text = msg.get_body(("plain",)).get_content()
-    assert "Hello Hurima Sacco team" in text and "Following up on my earlier note" in text
-    assert "loan reminders, deposit confirmations and AGM notices" in text
+    assert "Hello Hurima Sacco team" in text
+    assert ("Just following up on my email about sending loan reminders and deposit confirmations "
+            "by SMS. If that's something you're looking at, I'd be glad to visit or set up a quick "
+            "call, whichever suits you.") in text
     assert 'just reply "unsubscribe"' in text  # footer, as on every email
+    # signature ends at the phone number: no website line
+    assert "Kind regards,\nFlorence\nTalkSasa Communications Ltd\n+254 762 000 008\n+254 712 295 880\n\n--\n" in text
     assert not list(msg.iter_attachments())  # no PDF the second time
     assert db.find_lead_by_email("info@hurimasacco.co.ke")["status"] == "sent"  # still waiting
     assert db.sent_count(db.find_lead_by_email("info@hurimasacco.co.ke")["id"]) == 2
@@ -77,9 +82,55 @@ def test_not_due_before_five_business_days(world, mail):
     assert mail["delivered"] == []
 
 
-def test_only_one_follow_up_ever(world, mail):
+def age_all_sends(days):
+    with db.conn() as c:
+        c.execute("UPDATE sent SET sent_on = date(sent_on, ?)", (f"-{days} days",))
+
+
+def test_second_follow_up_is_the_last(world, mail):
+    lead_id = emailed("info@hurimasacco.co.ke", days_ago=20)
+    sender.run()
+    sender.run()  # follow-up 2 isn't due on the day follow-up 1 went
+    assert mail["delivered"] == ["info@hurimasacco.co.ke"]
+    age_all_sends(10)
+    sender.run()
+    age_all_sends(10)
+    sender.run()
+    assert mail["delivered"] == ["info@hurimasacco.co.ke"] * 2
+    assert db.sent_count(lead_id) == 3
+
+
+def test_second_follow_up_threads_under_the_first_email(world, mail):
+    emailed("info@fintech.co.ke", days_ago=20, industry="fintech", subject="OTPs and transaction alerts by SMS")
+    sender.run()
+    age_all_sends(10)
+    sender.run()
+    first, second = sent_to(mail, "info@fintech.co.ke")
+    assert "OTPs and transaction alerts by SMS. If that's something you're looking at, I can send over our rates and API docs." \
+        in first.get_body(("plain",)).get_content()
+    assert second["Subject"] == "Re: OTPs and transaction alerts by SMS"  # the first email's, not "Re: Re:"
+    # a reply to our latest email, with every earlier one in References, oldest first
+    assert second["In-Reply-To"] == first["Message-ID"]
+    assert second["References"] == f"{FIRST_ID} {first['Message-ID']}"
+    text = second.get_body(("plain",)).get_content()
+    assert "I won't keep filling your inbox. If SMS becomes useful for you later" in text
+    assert 'just reply "unsubscribe"' in text
+    assert not list(second.iter_attachments())
+
+
+def test_second_follow_up_waits_five_business_days_after_the_first(world, mail):
     emailed("info@hurimasacco.co.ke", days_ago=20)
     sender.run()
+    age_all_sends(1)
+    sender.run()
+    assert mail["delivered"] == ["info@hurimasacco.co.ke"]
+
+
+def test_no_second_follow_up_after_a_reply(world, mail):
+    lead_id = emailed("info@hurimasacco.co.ke", days_ago=20)
+    sender.run()
+    db.set_status(lead_id, "replied", "inbox")
+    age_all_sends(10)
     sender.run()
     assert mail["delivered"] == ["info@hurimasacco.co.ke"]
 
@@ -146,11 +197,62 @@ def test_first_subject_from_the_template_when_not_recorded(world, mail):
     assert msg["Subject"] == "Re: Loan reminders by SMS"  # sacco template's own subject
 
 
+def test_subject_is_the_one_the_first_email_went_out_with(world, mail):
+    emailed("info@zenka.co.ke", days_ago=10, industry="fintech",
+            subject="Loan repayment reminders by SMS — can we talk?")
+    sender.run()
+    [msg] = sent_to(mail, "info@zenka.co.ke")
+    assert msg["Subject"] == "Re: Loan repayment reminders by SMS — can we talk?"
+
+
+def plain(msg):
+    return msg.get_body(("plain",)).get_content()
+
+
+OFFER_LINE = "If that's something you're looking at, I can send over our rates and API docs."
+
+
+def test_old_wording_lead_gets_the_bulk_sms_line(world, mail):
+    emailed("info@zenka.co.ke", days_ago=20, industry="fintech",
+            subject="Loan repayment reminders by SMS — can we talk?")
+    sender.run()
+    text = plain(sent_to(mail, "info@zenka.co.ke")[0])
+    assert f"Just following up on my earlier email about bulk SMS. {OFFER_LINE}" in text
+    assert "OTPs and transaction alerts" not in text
+    assert "Kind regards,\nFlorence\nTalkSasa Communications Ltd\n+254 762 000 008\n+254 712 295 880\n" in text
+    age_all_sends(10)
+    sender.run()  # follow-up 2 is the same for everyone
+    assert "I won't keep filling your inbox." in plain(sent_to(mail, "info@zenka.co.ke")[1])
+
+
+def test_unknown_first_subject_counts_as_old_wording(world, mail):
+    emailed("info@hurimasacco.co.ke", days_ago=10, subject=None)
+    sender.run()
+    assert "Just following up on my earlier email about bulk SMS." in plain(sent_to(mail, "info@hurimasacco.co.ke")[0])
+
+
+def test_current_wording_lead_keeps_the_uses_line(world, mail):
+    emailed("info@fintech.co.ke", days_ago=10, industry="fintech", subject="otps and transaction  alerts by SMS")
+    sender.run()
+    text = plain(sent_to(mail, "info@fintech.co.ke")[0])
+    assert f"Just following up on my email about sending OTPs and transaction alerts by SMS. {OFFER_LINE}" in text
+    assert "bulk SMS" not in text
+
+
+def test_every_follow_up_1_has_the_line_old_wording_leads_swap(world):
+    import personalise
+    for k, v in personalise.USES.items():
+        if v.get("approved"):
+            assert sender.FOLLOWUP1_LINE in sender.followup_template({"industry": k}).read_text(encoding="utf-8")
+
+
 def test_every_approved_industry_has_a_follow_up():
     import personalise
     approved = [k for k, v in personalise.USES.items() if v.get("approved")]
-    missing = [k for k in approved if not (sender.FOLLOWUP_DIR / f"{k}.txt").exists()]
+    missing = [f"followup{n}/{k}" for n in (1, 2) for k in approved
+               if not sender.followup_template({"industry": k}, n)]
     assert missing == []
+    assert sorted(sender.FOLLOWUP_OFFERS) == sorted(approved)
 
 
 @pytest.mark.parametrize("start, expected", [

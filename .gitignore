@@ -13,3 +13,4 @@ previews.txt
 *.db-wal
 *.db-shm
 *.db-journal
+followup_previews.txt

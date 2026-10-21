@@ -153,22 +153,21 @@ def opt_out(text):
     return "needs_review" if mentions else None
 
 
+# A bounce stops all outreach for good, so it is decided only from a delivery report
+# (inbox.check_message, by its sender), never from the words of a reply: "your email to
+# our old address was undeliverable, please send pricing here" is from a person. A reply
+# that talks like this is held for you instead.
 BOUNCE_WORDS = re.compile(r"(delivery status notification|undeliverable|mailbox unavailable|"
                           r"address not found|delivery has failed)", re.I)
 
 
 def quick_rules(text):
     """Cheap checks before calling the AI. "unsubscribe" only for a plain request to stop,
-    "needs_review" for a reply that mentions opting out without plainly asking, "bounce"
-    for a delivery failure, otherwise None."""
-    rule = opt_out(text)
-    if rule:
-        return rule
-    if BOUNCE_WORDS.search(text):
-        return "bounce"
-    # Out-of-office is not decided from the words: "our IT head is on leave, but we'd like a
-    # demo" is interested. inbox.is_auto_reply catches real auto-replies by their headers.
-    return None
+    "needs_review" for a reply that mentions opting out without plainly asking, otherwise
+    None. Never "bounce": see BOUNCE_WORDS."""
+    # Out-of-office is not decided from the words either: "our IT head is on leave, but we'd
+    # like a demo" is interested. inbox.is_auto_reply catches real auto-replies by their headers.
+    return opt_out(text)
 
 
 # --- Asking the AI (G-02) ---
@@ -205,10 +204,12 @@ def review(summary):
 
 
 def classify(text):
-    """The reply's label, summary and confidence. Opt-outs and bounces are decided by the
-    rules above before the AI is asked, so the AI never overrides a plain opt-out; and the
-    AI alone never opts anyone out: its "unsubscribe" is held for you. A failure, an
-    unknown label or low confidence is held for you too ("hold": alert, act on nothing)."""
+    """The reply's label, summary and confidence. Opt-outs are decided by the rules above
+    before the AI is asked, so the AI never overrides a plain opt-out; and the AI alone
+    never opts anyone out or bounces a lead: its "unsubscribe" or "bounce" is held for you.
+    This is a person's reply, so it is never labelled a bounce (see BOUNCE_WORDS). A
+    failure, an unknown label or low confidence is held for you too ("hold": alert, act on
+    nothing)."""
     text = text.strip()[:3000]
     rule = quick_rules(text)
     if rule == "needs_review":
@@ -216,6 +217,9 @@ def classify(text):
                       "stop; not acted on. Please read it.")
     if rule:
         return {"label": rule, "summary": rule.replace("_", " "), "confidence": 1.0}
+    if BOUNCE_WORDS.search(text):
+        return review("Mentions a failed delivery, but is not a delivery report from a mail "
+                      "server; not acted on. Please read it.")
     try:
         raw = ask_with_retry(PROMPT.format(text=text))
         data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
@@ -228,6 +232,9 @@ def classify(text):
     if label == "unsubscribe":
         return review(f"The AI thinks this may be an opt-out, but it is not a plain request to stop; "
                       f"not acted on. Please read it. AI summary: {summary}")
+    if label == "bounce":
+        return review(f"The AI thinks this may be a failed delivery, but it is not a delivery report "
+                      f"from a mail server; not acted on. Please read it. AI summary: {summary}")
     if label not in LABELS or label == "needs_review" or conf < MIN_CONFIDENCE:
         return review(f"The AI was unsure (label {label}, confidence {conf:.2f}). Please read it. "
                       f"AI summary: {summary}")

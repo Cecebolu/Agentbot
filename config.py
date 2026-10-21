@@ -19,14 +19,18 @@ FROM_NAME = env("FROM_NAME", "TalkSasa")
 FROM_EMAIL = env("FROM_EMAIL", SMTP_USER)
 DAILY_LIMIT = int(env("DAILY_LIMIT", "25"))         # start low, raise slowly
 SEND_DELAY_SECONDS = int(env("SEND_DELAY_SECONDS", "90"))  # gap between emails
+# First emails go to the highest need score first (targeting.py); a lead scored below
+# MIN_SCORE, or not scored yet, is left waiting. Follow-ups don't depend on it.
+MIN_SCORE = int(env("MIN_SCORE", "50"))
 # Bounce gate: sending pauses while more than BOUNCE_LIMIT_PERCENT of the companies emailed in
 # the last BOUNCE_WINDOW_DAYS have bounced. It reopens by itself as those sends age out of the
 # window. With fewer than BOUNCE_MIN_SENDS companies in the window there is too little to judge.
 BOUNCE_LIMIT_PERCENT = float(env("BOUNCE_LIMIT_PERCENT", "3"))
 BOUNCE_WINDOW_DAYS = int(env("BOUNCE_WINDOW_DAYS", "14"))
 BOUNCE_MIN_SENDS = int(env("BOUNCE_MIN_SENDS", "20"))
-# "true" lets each lead get one follow-up (templates/followup/<industry>.txt) after
-# FOLLOWUP_AFTER_DAYS business days without an answer. A first email is never sent twice.
+# "true" lets each lead get two follow-ups without an answer: templates/followup/<industry>.txt
+# FOLLOWUP_AFTER_DAYS business days after the first email, then templates/followup2/<industry>.txt
+# FOLLOWUP_AFTER_DAYS business days after that. A first email is never sent twice.
 FOLLOWUPS_APPROVED = env("FOLLOWUPS_APPROVED", "false").strip().lower() == "true"
 FOLLOWUP_AFTER_DAYS = int(env("FOLLOWUP_AFTER_DAYS", "5"))
 

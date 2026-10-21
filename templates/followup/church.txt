@@ -1,11 +1,9 @@
 Hello {company} team,
 
-Following up on my earlier note about sending event reminders, contribution confirmations and member updates by SMS.
-
-Would a short visit or a 15-minute call next week work? If someone else handles communication with your congregation, I'd be glad to reach out to them instead.
+Just following up on my email about sending {uses} by SMS. If that's something you're looking at, {offer}
 
 Kind regards,
 Florence
 TalkSasa Communications Ltd
 +254 762 000 008
-{website}
++254 712 295 880

@@ -142,4 +142,4 @@ def test_no_follow_up_after_a_failed_classification(leads, ai_down, alerts, monk
     monkeypatch.setattr(config, "FOLLOWUPS_APPROVED", True)
     with db.conn() as c:  # long past the follow-up day
         c.execute("UPDATE sent SET sent_on=?", ((date.today() - timedelta(days=30)).isoformat(),))
-    assert "info@dazzcode.com" not in [l["email"] for l in sender.followups_due()]
+    assert "info@dazzcode.com" not in [l["email"] for l, _ in sender.followups_due()]

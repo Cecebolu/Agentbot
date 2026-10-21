@@ -15,6 +15,7 @@ import db  # noqa: E402
 import inbox  # noqa: E402
 import notify  # noqa: E402
 import sender  # noqa: E402
+import targeting  # noqa: E402
 from fakemail import SENT_ID  # noqa: E402
 
 
@@ -30,6 +31,15 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket.socket, "connect", blocked)
     monkeypatch.setattr(socket, "create_connection", blocked)
     monkeypatch.setattr(socket, "getaddrinfo", blocked)
+
+
+@pytest.fixture(autouse=True)
+def no_need_scores(monkeypatch):
+    """Leads go out whatever their need score (tests of the score set MIN_SCORE themselves),
+    and targeting.py reads no websites: every site counts as unreadable and shows no emails."""
+    monkeypatch.setattr(config, "MIN_SCORE", 0)
+    monkeypatch.setattr(targeting, "site_text", lambda website: None)
+    monkeypatch.setattr(targeting, "site_emails", lambda website: [])
 
 
 @pytest.fixture

@@ -30,6 +30,9 @@ coworking:
 delivery_app:
   approved: false
   uses: [order updates, delivery updates, rider arrival notices, payment alerts, OTPs]
+digital_lender:
+  approved: true
+  uses: [loan repayment reminders, disbursement confirmations, OTPs]
 digital_marketing_agency:
   approved: false
   uses: [promotional campaigns, appointment reminders, event reminders]

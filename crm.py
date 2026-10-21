@@ -23,6 +23,7 @@ import getpass
 import hashlib
 import hmac
 import imaplib
+import json
 import os
 import re
 import secrets
@@ -393,6 +394,35 @@ def _lead_or_404(c, lead_id):
     return lead
 
 
+def _score_cols(c):
+    """The targeting step adds score, score_reasons and source to leads; older databases don't have them."""
+    lc = _cols(c, "leads")
+    return {k: (k if k in lc else None) for k in ("score", "score_reasons", "source")}
+
+
+def _reasons(raw):
+    """score_reasons is saved as a JSON list; show it as short readable strings."""
+    if not raw:
+        return []
+    try:
+        val = json.loads(raw)
+    except (ValueError, TypeError):
+        return [str(raw)]
+    if isinstance(val, dict):
+        val = [f"{k} {v}" for k, v in val.items()]
+    if not isinstance(val, list):
+        return [str(val)]
+    out = []
+    for x in val:
+        if isinstance(x, dict):
+            pts = x.get("points", x.get("score", x.get("delta")))
+            why = x.get("reason") or x.get("rule") or x.get("why") or ""
+            out.append((f"{'+' if isinstance(pts, (int, float)) and pts > 0 else ''}{pts} {why}").strip() if pts is not None else str(why))
+        else:
+            out.append(str(x))
+    return [o for o in out if o][:12]
+
+
 def _user_names(c):
     return {r["id"]: r["name"] for r in c.execute("SELECT id, name FROM users")}
 
@@ -413,8 +443,10 @@ def open_leads(scope: str = "open", user=Depends(current_user)):
             where += " AND l.claimed_by = %d" % int(user["id"])
     with conn() as c:
         names = _user_names(c)
+        sc = _score_cols(c)
         rows = [dict(r) for r in c.execute(f"""
             SELECT l.id, l.company, l.email, l.industry, l.status, l.website, l.claimed_by, l.claimed_at,
+                   {('l.' + sc['score']) if sc['score'] else 'NULL'} AS score,
                    (SELECT COUNT(*) FROM replies r WHERE r.lead_id = l.id AND COALESCE(r.handled,0) = 0
                         AND r.label IN ({actionable})) AS waiting,
                    (SELECT r.id FROM replies r WHERE r.lead_id = l.id AND r.label NOT IN ('bounce','out_of_office')
@@ -448,6 +480,7 @@ def lead_detail(lead_id: int, user=Depends(current_user)):
     with conn() as c:
         lead = dict(_lead_or_404(c, lead_id))
         names = _user_names(c)
+        lead["score_reasons"] = _reasons(lead.get("score_reasons"))
         sc = _cols(c, "sent")
         subj = "sent_subject" if "sent_subject" in sc else ("subject" if "subject" in sc else None)
         body = "sent_body" if "sent_body" in sc else ("body" if "body" in sc else None)
@@ -723,6 +756,90 @@ def send_reply(lead_id: int, body: ReplyIn, user=Depends(current_user)):
         log_event(c, lead_id, user["id"], "replied", to)
     _file_in_sent(msg)
     return {"ok": True, "status": status, "to": to}
+
+
+# ---------------------------------------------------------------- what's working
+
+NOT_REAL_REPLY = ("bounce", "out_of_office")
+MIN_SAMPLE = 20
+
+
+def _band(score):
+    if score is None:
+        return "Not scored"
+    s = float(score)
+    if s >= 80:
+        return "80–100"
+    if s >= 60:
+        return "60–79"
+    if s >= 50:
+        return "50–59"
+    return "Below 50"
+
+
+@router.get("/api/crm/report")
+def report(days: int = 0, user=Depends(current_user)):
+    """Reply results by segment, score band and source, counted per lead that was emailed.
+
+    days = 0 means all time; otherwise only leads first emailed in the last N days.
+    """
+    if days < 0 or days > 3650:
+        raise HTTPException(400, "Pick a period between 1 and 3650 days, or all time.")
+    with conn() as c:
+        sc = _score_cols(c)
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d") if days else "0000"
+        rows = c.execute(f"""
+            SELECT l.id, COALESCE(NULLIF(l.industry, ''), 'default') AS industry, l.status,
+                   {('l.' + sc['score']) if sc['score'] else 'NULL'} AS score,
+                   {("COALESCE(NULLIF(l." + sc['source'] + ", ''), 'Web search')") if sc['source'] else "'Web search'"} AS source,
+                   MIN(s.sent_on) AS first_sent,
+                   MAX(CASE WHEN r.label = 'bounce' THEN 1 ELSE 0 END) AS bounced_reply,
+                   MAX(CASE WHEN r.id IS NOT NULL AND r.label NOT IN ('bounce','out_of_office') THEN 1 ELSE 0 END) AS replied,
+                   MAX(CASE WHEN r.label = 'interested' THEN 1 ELSE 0 END) AS interested_reply
+            FROM leads l
+            JOIN sent s ON s.lead_id = l.id
+            LEFT JOIN replies r ON r.lead_id = l.id
+            GROUP BY l.id
+            HAVING MIN(s.sent_on) >= ?""", (since,)).fetchall()
+
+    def blank():
+        return {"emailed": 0, "bounced": 0, "reachable": 0, "replied": 0, "interested": 0, "meetings": 0, "clients": 0}
+
+    groups = {"segment": {}, "score": {}, "source": {}}
+    total = blank()
+    for r in rows:
+        bounced = r["status"] == "bounced" or bool(r["bounced_reply"])
+        interested = bool(r["interested_reply"]) or r["status"] in ("meeting", "client")
+        meeting = r["status"] in ("meeting", "client")
+        keys = {"segment": r["industry"], "score": _band(r["score"]), "source": r["source"]}
+        for g, key in keys.items():
+            for bucket in (groups[g].setdefault(key, blank()),) + ((total,) if g == "segment" else ()):
+                bucket["emailed"] += 1
+                bucket["bounced"] += bounced
+                bucket["reachable"] += not bounced
+                bucket["replied"] += bool(r["replied"]) and not bounced
+                bucket["interested"] += interested
+                bucket["meetings"] += meeting
+                bucket["clients"] += r["status"] == "client"
+
+    def finish(d):
+        reach = d["reachable"]
+        d["reply_rate"] = round(100 * d["replied"] / reach, 1) if reach else None
+        d["interested_rate"] = round(100 * d["interested"] / reach, 1) if reach else None
+        d["small_sample"] = reach < MIN_SAMPLE
+        return d
+
+    order = {"score": ["80–100", "60–79", "50–59", "Below 50", "Not scored"]}
+    out = {}
+    for g, d in groups.items():
+        items = [dict(finish(v), name=k) for k, v in d.items()]
+        if g in order:
+            items.sort(key=lambda x: order[g].index(x["name"]) if x["name"] in order[g] else 99)
+        else:
+            items.sort(key=lambda x: -x["emailed"])
+        out[g] = items
+    return {"total": finish(total), "groups": out, "days": days, "min_sample": MIN_SAMPLE,
+            "has_scores": bool(sc["score"]), "has_source": bool(sc["source"])}
 
 
 # ---------------------------------------------------------------- team (admin)

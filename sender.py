@@ -19,6 +19,7 @@ import db
 import notify
 import personalise
 import ranking
+import targeting
 
 TEMPLATE_DIR = Path(__file__).parent / "templates"
 MAX_PDF_BYTES = 1024 * 1024
@@ -67,8 +68,10 @@ def load_template(industry):
     return name, subject.replace("Subject:", "").strip(), body.strip()
 
 
-def fill(text, lead, attached=False, for_html=False):
-    return text.format(
+def fill(text, lead, attached=False, for_html=False, extra=None):
+    """The template with this lead's details in it. `extra` adds or replaces placeholders
+    (the follow-ups' own {uses} and {offer})."""
+    values = dict(
         opener=personalise.opener(lead),
         uses=personalise.uses(lead),
         company=lead["company"] or "your organisation",
@@ -84,6 +87,8 @@ def fill(text, lead, attached=False, for_html=False):
         # whole signature line; empty when PROFILE_URL is not set
         profile_line=f"Company profile: {config.PROFILE_URL}" if config.PROFILE_URL else "",
     )
+    values.update(extra or {})
+    return text.format(**values)
 
 
 def _link(m):
@@ -114,14 +119,15 @@ def build(lead):
     return compose(lead, fill(subject, lead), body, attachment()), tname
 
 
-def compose(lead, subject, body, pdf=None, in_reply_to=None):
+def compose(lead, subject, body, pdf=None, in_reply_to=None, extra=None, references=None):
     """The email itself: the template body filled in for this lead, as plain text and HTML,
     with our unsubscribe footer, and the PDF if given. in_reply_to (a Message-ID) makes it
-    part of that email's thread."""
+    part of that email's thread; references lists the thread's Message-IDs oldest first
+    (default: in_reply_to alone). `extra` is passed on to fill."""
     def tidy(t):
         return re.sub(r"\n{3,}", "\n\n", t.rstrip())  # close the gap left by an empty placeholder line
-    text = tidy(fill(body, lead, attached=bool(pdf)))
-    html_body = to_html(tidy(fill(body, lead, attached=bool(pdf), for_html=True)))
+    text = tidy(fill(body, lead, attached=bool(pdf), extra=extra))
+    html_body = to_html(tidy(fill(body, lead, attached=bool(pdf), for_html=True, extra=extra)))
     text += ("\n\n--\nIf you'd rather not hear from us, just reply \"unsubscribe\" "
              "and we won't email you again.")
     msg = EmailMessage()
@@ -132,7 +138,7 @@ def compose(lead, subject, body, pdf=None, in_reply_to=None):
     msg["Message-ID"] = make_msgid(domain=config.FROM_EMAIL.split("@")[1])
     if in_reply_to:
         msg["In-Reply-To"] = in_reply_to
-        msg["References"] = in_reply_to
+        msg["References"] = " ".join(references or [in_reply_to])
     msg["List-Unsubscribe"] = f"<mailto:{config.FROM_EMAIL}?subject=unsubscribe>"
     msg.set_content(text)
     msg.add_alternative(html_body, subtype="html")
@@ -143,27 +149,80 @@ def compose(lead, subject, body, pdf=None, in_reply_to=None):
 
 # --- Follow-ups ---
 
-FOLLOWUP_DIR = TEMPLATE_DIR / "followup"
+FOLLOWUP_DIR = TEMPLATE_DIR / "followup"     # follow-up 1
+FOLLOWUP2_DIR = TEMPLATE_DIR / "followup2"   # follow-up 2, the last one
+MAX_FOLLOWUPS = 2
 # A lead whose out-of-office reply came in this recently is probably still away: its
 # follow-up waits until then
 OUT_OF_OFFICE_HOLD_DAYS = 7
+# {offer} in the follow-ups, by industry. An industry missing here can't get a follow-up
+# built, so it is never sent one by mistake.
+VISIT_OFFER = "I'd be glad to visit or set up a quick call, whichever suits you."
+API_OFFER = "I can send over our rates and API docs."
+FOLLOWUP_OFFERS = {"church": VISIT_OFFER, "sacco": VISIT_OFFER, "school": VISIT_OFFER,
+                   "fintech": API_OFFER, "hr_payroll": API_OFFER, "saas": API_OFFER,
+                   "tech_startup": API_OFFER, "digital_lender": API_OFFER}
+FOLLOWUP_USES = 2  # {uses} in a follow-up: the first two on the industry's list
+# Follow-up 1's first line, and what replaces it for a lead whose first email had older
+# wording than its template has now (that email may not have named these uses)
+FOLLOWUP1_LINE = "Just following up on my email about sending {uses} by SMS."
+OLD_WORDING_LINE = "Just following up on my earlier email about bulk SMS."
 
 
-def followup_template(lead):
-    """templates/followup/<industry>.txt, or None if that industry has no follow-up."""
-    path = FOLLOWUP_DIR / f"{personalise.industry_key(lead)}.txt"
+def followup_template(lead, n=1):
+    """templates/followup/<industry>.txt (n=1) or templates/followup2/<industry>.txt (n=2),
+    or None if that industry has no such follow-up."""
+    folder = FOLLOWUP_DIR if n == 1 else FOLLOWUP2_DIR
+    path = folder / f"{personalise.industry_key(lead)}.txt"
     return path if path.exists() else None
 
 
-def build_followup(lead):
-    """The follow-up to a lead's first email: its industry's follow-up template, no PDF,
-    sent as a reply in the same thread ("Re: <first subject>"). `lead` is a row from
-    db.awaiting_followup, which carries the first email's message_id and sent_subject."""
-    path = followup_template(lead)
-    first_subject = lead["sent_subject"] or fill(load_template(lead["industry"])[1], lead)
+def followup_values(lead):
+    """{uses} and {offer} for a follow-up, e.g. "loan reminders and deposit confirmations"."""
+    key = personalise.industry_key(lead)
+    return {"uses": " and ".join(personalise.USES[key]["uses"][:FOLLOWUP_USES]),
+            "offer": FOLLOWUP_OFFERS[key]}
+
+
+def _same_subject(a, b):
+    return " ".join(a.split()).lower() == " ".join(b.split()).lower()
+
+
+def old_wording(lead, thread):
+    """Whether the lead's first email went out with older wording than its industry's
+    template has now: its saved subject differs from the template's subject, or no subject
+    was saved (emails from before subjects were recorded, so the wording is unknown).
+    `thread` is db.sent_thread for the lead; a lead never emailed has no old wording."""
+    if not thread:
+        return False
+    saved = thread[0]["sent_subject"]
+    return not saved or not _same_subject(saved, fill(load_template(lead["industry"])[1], lead))
+
+
+def build_followup(lead, n=1):
+    """Follow-up n (1 or 2) to a lead's first email: its industry's follow-up template, no
+    PDF, sent as a reply in the same thread. The subject is "Re: " + the subject the first
+    email actually went out with (the template's subject only if none was saved).
+    In-Reply-To is the latest email we sent the lead, References all of ours oldest first.
+    If the first email had old wording (old_wording), follow-up 1 opens with
+    OLD_WORDING_LINE instead of naming the uses.
+    `lead` is a row from db.awaiting_followup; the thread is read from the sent table."""
+    path = followup_template(lead, n)
+    lead = dict(lead)
+    thread = db.sent_thread(lead["id"]) if lead.get("id") else []
+    body = path.read_text(encoding="utf-8").strip()
+    if n == 1 and old_wording(lead, thread):
+        if FOLLOWUP1_LINE not in body:  # never send the uses line to an old-wording lead by mistake
+            raise RuntimeError(f"{path} doesn't contain the line to swap for old-wording leads: {FOLLOWUP1_LINE!r}")
+        body = body.replace(FOLLOWUP1_LINE, OLD_WORDING_LINE)
+    first_subject = ((thread[0]["sent_subject"] if thread else lead.get("sent_subject"))
+                     or fill(load_template(lead["industry"])[1], lead))
     subject = first_subject if first_subject.lower().startswith("re:") else f"Re: {first_subject}"
-    msg = compose(lead, subject, path.read_text(encoding="utf-8").strip(), in_reply_to=lead["message_id"])
-    return msg, f"followup/{path.stem}"
+    ids = [r["message_id"] for r in thread if r["message_id"]] or [lead.get("message_id")]
+    ids = [i for i in ids if i]
+    msg = compose(lead, subject, body,
+                  in_reply_to=ids[-1] if ids else None, references=ids, extra=followup_values(lead))
+    return msg, f"{path.parent.name}/{path.stem}"
 
 
 def business_days_after(day, n):
@@ -176,16 +235,16 @@ def business_days_after(day, n):
 
 
 def followups_due():
-    """Leads due their one follow-up, oldest first email first: follow-ups approved, still
-    at 'sent' after exactly one email, FOLLOWUP_AFTER_DAYS business days since it, an
-    approved industry with a follow-up template, not suppressed, and no out-of-office
-    reply in the last week. A lead that replied, bounced or unsubscribed is no longer
-    at 'sent', so it never gets one."""
+    """Follow-ups due today as [(lead, n)], follow-up 1 before follow-up 2, oldest first email
+    first within each: follow-ups approved, still at 'sent' after exactly n emails,
+    FOLLOWUP_AFTER_DAYS business days since the last of them, an approved industry with a
+    template for follow-up n, not suppressed, and no out-of-office reply in the last week.
+    A lead that replied, bounced or unsubscribed is no longer at 'sent', so it gets none."""
     if not config.FOLLOWUPS_APPROVED:
         return []
     today, suppressed = date.today(), db.suppressed_emails()
-    return [lead for lead in db.awaiting_followup()
-            if personalise.approved(lead) and followup_template(lead)
+    return [(lead, n) for n in range(1, MAX_FOLLOWUPS + 1) for lead in db.awaiting_followup(n)
+            if personalise.approved(lead) and followup_template(lead, n)
             and business_days_after(date.fromisoformat(lead["sent_on"]), config.FOLLOWUP_AFTER_DAYS) <= today
             and lead["email"] not in suppressed
             and not db.recent_out_of_office(lead["id"], OUT_OF_OFFICE_HOLD_DAYS)]
@@ -264,22 +323,28 @@ def save_to_sent(msg, sent_at):
         return False
 
 
-def deliver(smtp, lead, msg, tname, followup=False):
-    """Send one email, record exactly what went out, and file it in Sent.
+def deliver(smtp, lead, msg, tname, followup=0):
+    """Send one email, record exactly what went out, and file it in Sent. `followup` is 0 for
+    the first email, else the follow-up's number (1 or 2).
     Every send goes through here, so this is also where the limits are kept: a first email
-    only to a lead never emailed, and one follow-up, only when follow-ups are approved."""
+    only to a lead never emailed, follow-up n only after exactly n emails, at most
+    MAX_FOLLOWUPS of them, and only when follow-ups are approved."""
     if not personalise.approved(lead):
         raise RuntimeError(f"{lead['email']}: industry {lead['industry'] or 'default'!r} is not approved in uses.yaml")
     emailed = db.sent_count(lead["id"])
     if followup and not config.FOLLOWUPS_APPROVED:
         raise RuntimeError(f"{lead['email']}: follow-ups are not approved (FOLLOWUPS_APPROVED in .env)")
-    if followup and emailed != 1:
-        raise RuntimeError(f"{lead['email']}: a follow-up goes only after exactly one email ({emailed} sent)")
+    if followup and not 1 <= followup <= MAX_FOLLOWUPS:
+        raise RuntimeError(f"{lead['email']}: there is no follow-up {followup:d}")
+    if followup and emailed != followup:
+        raise RuntimeError(f"{lead['email']}: follow-up {followup:d} goes only after exactly "
+                           f"{followup:d} email{'s' if followup > 1 else ''} ({emailed} sent)")
     if not followup and emailed:
         raise RuntimeError(f"{lead['email']} has already been emailed")
     smtp.send_message(msg)
     sent_at = time.time()
-    variant = "followup" if followup else "personal" if personalise.picked_uses(lead) else "template"
+    variant = ("followup" if followup == 1 else f"followup{followup:d}" if followup
+               else "personal" if personalise.picked_uses(lead) else "template")
     db.record_sent(lead["id"], msg["Message-ID"], tname, str(msg["Subject"]), plain_of(msg), variant)
     save_to_sent(msg, sent_at)
 
@@ -349,15 +414,23 @@ def show_sent(email):
 
 
 def approved_waiting(quiet=False):
-    """Waiting leads whose industry is approved in uses.yaml, in sending order. The rest
-    are skipped and left exactly as they are, so they go out once their industry is approved."""
+    """Waiting leads whose industry is approved in uses.yaml and whose need score is at
+    least MIN_SCORE, in sending order (highest score first). The rest are skipped and left
+    exactly as they are, so they go out once their industry is approved or their score
+    rises. A lead not scored yet counts as 0."""
     waiting = ranking.waiting()
     leads = [l for l in waiting if personalise.approved(l)]
     if len(leads) < len(waiting) and not quiet:
         skipped = sorted({personalise.industry_key(l) for l in waiting if not personalise.approved(l)})
         print(f"Skipped {len(waiting) - len(leads)} waiting leads in industries not approved "
               f"in uses.yaml: {', '.join(skipped)}")
-    return leads
+    low = [l for l in leads if (ranking.need_score(l) or 0) < config.MIN_SCORE]
+    if low and not quiet:
+        unscored = sum(ranking.need_score(l) is None for l in low)
+        print(f"Skipped {len(low)} waiting leads with a need score below MIN_SCORE "
+              f"({config.MIN_SCORE})" + (f", {unscored} of them not scored yet" if unscored else ""))
+    low_ids = {l["id"] for l in low}
+    return [l for l in leads if l["id"] not in low_ids]
 
 
 def bounce_gate():
@@ -402,9 +475,11 @@ def leftover_claims():
 
 
 def plan(dry_run=False):
-    """Today's batch as [(lead, is_followup)], follow-ups first. A dry run reads only: no
+    """Today's batch as [(lead, followup)], follow-ups first (followup = 0 for a first email,
+    else the follow-up's number). A dry run reads only: no
     start years are looked up (WHOIS, websites), no scores saved and no AI asked, so leads
-    not ranked yet are shown in the order they would have without those."""
+    not ranked yet are shown in the order they would have without those, and leads not
+    scored yet are left out as below MIN_SCORE."""
     remaining = config.DAILY_LIMIT - db.sent_today()
     if remaining <= 0:
         return []
@@ -417,11 +492,12 @@ def plan(dry_run=False):
         # then oldest-found first. Start years are needed for every waiting lead to rank them.
         if not dry_run:
             ranking.fill_years()
+            targeting.score_unscored()
         leads = approved_waiting()[:remaining - len(due)]
         # Write personal lines for any of today's leads that don't have them yet
         if not dry_run and leads and (personalise.run(leads) or any(l["confidence"] is None for l in leads)):
             leads = approved_waiting(quiet=True)[:remaining - len(due)]
-    return [(lead, True) for lead in due] + [(lead, False) for lead in leads]
+    return due + [(lead, 0) for lead in leads]
 
 
 def run(dry_run=False):
@@ -462,8 +538,8 @@ def _dry_run():
         return
     due = [b for b in batch if b[1]]
     for lead, followup in batch[:2] + [b for b in batch if not b[1]][:1 if due else 0]:
-        msg, _ = build_followup(lead) if followup else build(lead)
-        print("=" * 60, f"\n{'FOLLOW-UP' if followup else 'FIRST EMAIL'}\nTo: {msg['To']}\n"
+        msg, _ = build_followup(lead, followup) if followup else build(lead)
+        print("=" * 60, f"\n{f'FOLLOW-UP {followup:d}' if followup else 'FIRST EMAIL'}\nTo: {msg['To']}\n"
               f"Subject: {msg['Subject']}\n" + ("" if followup else personal_lines(lead) + "\n")
               + f"\n{plain_of(msg)}")
     print(f"\n(dry run) would send {len(due)} follow-ups and {len(batch) - len(due)} first emails. "
@@ -495,7 +571,7 @@ def _send_batch(batch, owner):
                 break
             counts[outcome] += 1
             in_a_row = in_a_row + 1 if outcome == "failed" else 0
-            print(f"[{i}/{len(batch)}] {outcome}{' follow-up' if followup else ''} {lead['email']}")
+            print(f"[{i}/{len(batch)}] {outcome}{f' follow-up {followup:d}' if followup else ''} {lead['email']}")
             db.refresh_lock(SEND_LOCK, owner, LOCK_SECONDS)
             if outcome == "bounced" and bounce_gate():
                 _paused(bounce_gate())
@@ -532,8 +608,8 @@ def close(s):
         pass  # already gone
 
 
-def send_one(s, lead, followup=False, owner=None):
-    """Try to email one lead its first email, or its follow-up. Returns what happened:
+def send_one(s, lead, followup=0, owner=None):
+    """Try to email one lead its first email (followup=0), or follow-up 1 or 2. Returns what happened:
     "sent", "bounced" (address refused), "failed" (this email didn't go out; the lead stays
     waiting and is tried again next time), "skipped" (no longer to be emailed: opted out,
     suppressed, replied or already emailed since the batch was made), "limit" (today's
@@ -549,7 +625,7 @@ def send_one(s, lead, followup=False, owner=None):
         print(f"  skipped {lead['email']}: {why_not}")
         return "limit" if why_not.startswith("daily limit") else "skipped"
     try:
-        msg, tname = build_followup(lead) if followup else build(lead)
+        msg, tname = build_followup(lead, followup) if followup else build(lead)
     except Exception as e:  # e.g. a template with a broken {placeholder}
         db.release_claim(lead["id"])
         return _failed(lead, f"could not build the email: {e}")

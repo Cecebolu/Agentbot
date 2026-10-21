@@ -1,11 +1,11 @@
-"""Decides which waiting leads get emailed first: younger companies, niches that
-send messages all day, and leads with an address on their own domain.
+"""Decides which waiting leads get emailed first: the highest need score (targeting.py),
+then younger companies, niches that send messages all day, and leads with an address on
+their own domain.
 
 The year a company started is estimated from its own website ("founded in 2021",
 "since 2019", the first year in a footer copyright range) and from the WHOIS
 record of its domain. The earliest believable year wins.
 """
-import json
 import re
 import threading
 from datetime import date
@@ -15,7 +15,6 @@ import db
 import scraper
 
 EARLIEST_YEAR = 1950
-SCORE_VERSION = 1  # raise this when the points below change
 WHOIS_TIMEOUT = 5  # seconds
 YEAR = r"((?:19|20)\d{2})"
 STARTED = re.compile(r"\b(?:founded|established|since|est)\b\.?\s*(?:in\s+)?" + YEAR + r"\b", re.I)
@@ -102,7 +101,6 @@ def fill_years(leads=None):
         db.save_est_year(lead["id"], year, source)
         print(f"[{i}/{len(leads)}] {lead['company'] or lead['email']}: "
               f"{f'started about {year} ({source})' if year else 'start year unknown'}")
-    save_scores()
     return len(leads)
 
 
@@ -125,26 +123,23 @@ def score(lead):
     return sum(r["points"] for r in score_reasons(lead).values())
 
 
-def save_scores():
-    """Store every lead's score, its reasons and the version of the rules on the lead."""
-    with db.conn() as c:
-        for lead in c.execute("SELECT * FROM leads").fetchall():
-            reasons = score_reasons(lead)
-            c.execute("UPDATE leads SET score=?, score_reasons=?, score_version=? WHERE id=?",
-                      (sum(r["points"] for r in reasons.values()), json.dumps(reasons),
-                       SCORE_VERSION, lead["id"]))
+def need_score(lead):
+    """The lead's saved need score (targeting.py), or None if it hasn't been scored."""
+    lead = dict(lead)
+    return lead.get("score") if lead.get("scored_at") else None
 
 
 def waiting():
-    """Verified leads in the order they will be emailed: highest score first,
-    then oldest-found first. An address on the suppression list is never waiting,
+    """Verified leads in the order they will be emailed: highest need score first (see
+    targeting.py; not scored yet comes last), then the points above, then oldest-found first. An address on the suppression list is never waiting,
     whatever its score, and neither is a lead that has already been emailed, even if
     its status was set back to verified: a first email is never sent twice."""
     suppressed = db.suppressed_emails()
     emailed = db.emailed_lead_ids()
     leads = [l for l in db.leads_by_status("verified")
              if l["email"] not in suppressed and l["id"] not in emailed]
-    return sorted(leads, key=lambda l: (-score(l), l["id"]))
+    return sorted(leads, key=lambda l: (-(need_score(l) if need_score(l) is not None else -1),
+                                        -score(l), l["id"]))
 
 
 def show(top=20):
@@ -153,10 +148,11 @@ def show(top=20):
     if not leads:
         print("No verified leads waiting.")
         return
-    print(f"{'#':>2}  {'COMPANY':34}  {'NICHE':24}  {'EST.':>4}  {'SOURCE':7}  SCORE")
+    print(f"{'#':>2}  {'COMPANY':34}  {'NICHE':24}  {'EST.':>4}  {'SOURCE':7}  NEED")
     for i, l in enumerate(leads[:top], 1):
         company = l["company"] or l["email"]
         company = company if len(company) <= 34 else company[:33] + "…"
         print(f"{i:>2}  {company:34}  {(l['industry'] or 'default'):24}  "
-              f"{l['est_year'] or '':>4}  {(l['est_year_source'] or 'unknown'):7}  {score(l):>5}")
+              f"{l['est_year'] or '':>4}  {(l['est_year_source'] or 'unknown'):7}  "
+              f"{need_score(l) if need_score(l) is not None else '-':>4}")
     print(f"{min(top, len(leads))} of {len(leads)} waiting leads.")

@@ -3,8 +3,10 @@ import email
 import html as html_lib
 import imaplib
 import re
+import sqlite3
 import time
 from datetime import date, datetime, timedelta
+from email.errors import HeaderParseError
 from email.header import decode_header, make_header
 from email.utils import parseaddr
 from pathlib import Path
@@ -38,7 +40,21 @@ OUR_FOOTER = re.compile(r"[^\n]*(?:rather not hear from us|click here to unsubsc
 
 
 def _decoded(part):
-    return (part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8", "ignore")
+    payload = part.get_payload(decode=True) or b""
+    try:
+        return payload.decode(part.get_content_charset() or "utf-8", "ignore")
+    except LookupError:  # a charset Python doesn't know: read it as UTF-8
+        return payload.decode("utf-8", "ignore")
+
+
+def header_text(value):
+    """A header (e.g. Subject) as text. A part in a charset Python doesn't know, or one that
+    is badly encoded, is read as UTF-8 with the unreadable bits replaced instead of raising."""
+    try:
+        return str(make_header(decode_header(value or "")))
+    except (LookupError, UnicodeError, ValueError, HeaderParseError):
+        return "".join(raw if isinstance(raw, str) else raw.decode("utf-8", "replace")
+                       for raw, _ in decode_header(value or ""))
 
 
 def html_text(html):
@@ -242,7 +258,13 @@ def check_once(catch_up=False):
             key = mail_key(folder, uid.decode())
             if db.reply_seen(key) or (key in skipped) != catch_up:
                 continue  # a normal check leaves skipped mail alone; a catch-up reads only that
-            result = check_message(box, uid, key, subjects, catch_up, newly_skipped)
+            try:
+                result = check_message(box, uid, key, subjects, catch_up, newly_skipped)
+            except CHECK_ERRORS:
+                raise  # the connection or the database, not this email: the next check tries again
+            except Exception as e:
+                set_aside(folder, uid, key, e, catch_up, newly_skipped)
+                continue
             if result:
                 if catch_up:
                     caught.append(key)
@@ -255,6 +277,27 @@ def check_once(catch_up=False):
     (Path(__file__).parent / "last_check.txt").write_text(datetime.now().isoformat(timespec="seconds"))
     send_alerts()
     return handled
+
+
+# Errors about the mail server connection or the database, not about one email. They stop the
+# check, as before, and the next check tries again; anything else is that email's own problem.
+CHECK_ERRORS = (imaplib.IMAP4.error, OSError, sqlite3.Error)
+
+
+def set_aside(folder, uid, key, error, catch_up, newly_skipped):
+    """An email that could not be handled (e.g. one malformed in a way the code doesn't
+    expect): it is left unread in the mailbox, never looked at again by a normal check, and
+    alerted once, so one bad email can't stop every check. A catch-up that fails on it again
+    leaves it skipped and doesn't alert again."""
+    where = f"{folder} message {uid.decode() if isinstance(uid, bytes) else uid}"
+    reason = f"{type(error).__name__}: {str(error)[:200]}"
+    print(f"  could not read {where} ({reason}); set aside")
+    if catch_up:
+        return
+    newly_skipped.append(key)
+    db.queue_alert(None, f"⚠️ LeadBot could not read one email ({where}): {reason}\n\n"
+                         "It was left unread and set aside; the other mail was checked as usual. "
+                         "Please open it in your mail app and check whether it is a reply from a lead.")
 
 
 def check_message(box, uid, key, subjects, catch_up, newly_skipped):
@@ -276,14 +319,14 @@ def check_message(box, uid, key, subjects, catch_up, newly_skipped):
     lead = db.find_lead_by_email(sender) or (None if is_bounce else thread_lead(headers))
     colleagues = [] if lead or is_bounce else colleague_leads(sender)
     to_us = not is_bounce and answers_our_email(
-        headers, str(make_header(decode_header(headers.get("Subject", "")))), subjects)
+        headers, header_text(headers.get("Subject", "")), subjects)
     if not lead and not is_bounce and not colleagues and not to_us:
         newly_skipped.append(key)  # not a lead and not a reply to us: leave it alone
         return None
 
     _, msg_data = box.uid("fetch", uid, "(BODY.PEEK[])")
     msg = email.message_from_bytes(msg_data[0][1])
-    subject = str(make_header(decode_header(msg.get("Subject", ""))))
+    subject = header_text(msg.get("Subject", ""))
     body = text_of(msg)
 
     if colleagues:

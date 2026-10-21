@@ -206,6 +206,21 @@ svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor;
 .c-meta b { color: var(--fg-2); font-weight: 500; }
 .c-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .c-foot .hint { font-size: 12px; color: var(--fg-3); margin-right: auto; }
+.score { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 20px; padding: 0 6px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 600; font-variant-numeric: tabular-nums; background: var(--muted); color: var(--fg-2); flex: none; }
+.score.hi { background: var(--primary-soft); color: var(--primary); }
+.d-score { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--fg-2); }
+.d-score .why { min-width: 0; }
+.rep-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.kpi { padding: 14px 16px; display: grid; gap: 2px; }
+.kpi span { font-size: 12px; color: var(--fg-3); }
+.kpi b { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.rate { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.rate .track { flex: 1; height: 6px; border-radius: 999px; background: var(--muted); overflow: hidden; max-width: 90px; }
+.rate .track i { display: block; height: 100%; background: var(--primary); border-radius: 999px; }
+.rate.small .track i { background: var(--neu); }
+.small-note { font-size: 11.5px; color: var(--fg-3); white-space: nowrap; }
+.panel .lead2 { padding: 10px 16px 0; font-size: 12.5px; color: var(--fg-3); }
 .locked { padding: 14px 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-2); background: var(--muted); }
 
 /* team & account */
@@ -259,6 +274,7 @@ td .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; 
   .textarea { min-height: 96px; }
   .page { padding: 20px 16px 32px; }
   .formgrid { grid-template-columns: minmax(0, 1fr); }
+  .rep-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fresh { display: none; }
   thead { display: none; }
   table, tbody, tr, td { display: block; }
@@ -280,6 +296,7 @@ td .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; 
   <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
   <symbol id="i-send" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></symbol>
   <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></symbol>
 </svg>
 
@@ -297,6 +314,7 @@ td .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; 
     <p class="eyebrow">Workspace</p>
     <nav class="nav">
       <a class="navlink" href="/"><svg class="i"><use href="#i-grid"/></svg>Dashboard</a>
+      <button class="navlink" data-go="report"><svg class="i"><use href="#i-chart"/></svg>What's working</button>
       <button class="navlink" data-go="team" id="nav-team" hidden><svg class="i"><use href="#i-users"/></svg>Team</button>
       <button class="navlink" data-go="account"><svg class="i"><use href="#i-user"/></svg>My account</button>
     </nav>
@@ -375,6 +393,18 @@ td .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; 
       </div>
     </div>
 
+    <div class="view" id="v-report" hidden>
+      <div class="page">
+        <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:240px"><h1>What's working</h1>
+            <p class="lead">Who replies, by industry, need score and where the lead came from. Counted once per organisation emailed.</p></div>
+          <select class="select" id="rep-days" style="width:auto" aria-label="Period">
+            <option value="0">All time</option><option value="30">First emailed in the last 30 days</option><option value="90">Last 90 days</option></select>
+        </div>
+        <div id="rep-body"><p class="muted">Loading…</p></div>
+      </div>
+    </div>
+
     <div class="view" id="v-account" hidden>
       <div class="page" style="max-width:640px">
         <div><h1>My account</h1><p class="lead" id="acct-lead"></p></div>
@@ -406,6 +436,7 @@ const LABELS = { interested: ["Interested", "pos"], question: ["Question", "info
 const STAGES = { replied: ["Replied", "pri"], meeting: ["Meeting set", "info"], client: ["Client", "pos"], lost: ["Lost", ""],
   sent: ["Awaiting reply", ""], unsubscribed: ["Unsubscribed", "neg"], bounced: ["Bounced", "neg"], invalid: ["Invalid email", "neg"],
   new: ["Found", ""], verified: ["Ready to email", ""] };
+const scoreHTML = (v) => v == null || v === "" ? "" : `<span class="score ${+v >= 80 ? "hi" : ""}" title="Need score out of 100">${Math.round(+v)}</span>`;
 const chip = (map, k) => { const [t, c] = map[k] || [k || "—", ""]; return `<span class="chip ${c}">${esc(t)}</span>`; };
 
 const state = { me: null, dryRun: false, fromEmail: "", view: "open", filter: "waiting", leads: [], counts: {}, users: [],
@@ -451,18 +482,19 @@ $("theme").onclick = () => {
 };
 
 /* ---------------- navigation ---------------- */
-const TITLES = { open: "Open leads", mine: "My leads", closed: "Won and lost", team: "Team", account: "My account" };
+const TITLES = { open: "Open leads", mine: "My leads", closed: "Won and lost", report: "What's working", team: "Team", account: "My account" };
 function go(view, opts = {}) {
   if (view === "team" && state.me?.role !== "admin") view = "open";
   state.view = view;
   $("v-leads").hidden = !["open", "mine", "closed"].includes(view);
-  $("v-team").hidden = view !== "team"; $("v-account").hidden = view !== "account";
+  $("v-team").hidden = view !== "team"; $("v-account").hidden = view !== "account"; $("v-report").hidden = view !== "report";
   document.querySelectorAll("[data-go]").forEach(b => b.dataset.go === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
   $("crumb").textContent = TITLES[view];
   $("subtabs").hidden = view === "closed";
   closeMenu();
   if (!opts.keepHash) setHash();
   if (view === "team") loadTeam();
+  if (view === "report") loadReport();
   if (view === "account") $("acct-lead").textContent = `${state.me.name} · ${state.me.email} · ${state.me.role === "admin" ? "Admin" : "Sales"}`;
   if (!$("v-leads").hidden) { if (!opts.keepSel) { state.sel = null; state.detail = null; } loadLeads(); }
 }
@@ -533,7 +565,7 @@ function renderList() {
       <span class="l1">${l.waiting ? '<span class="dot" title="Waiting for an answer"></span>' : ""}<b class="truncate">${esc(l.company || l.email)}</b>
         <span class="when">${esc(when(l.last_received))}</span></span>
       <span class="l2">${esc(l.last_summary || "No message text saved.")}</span>
-      <span class="l3">${l.last_label ? chip(LABELS, l.last_label) : ""}${chip(STAGES, l.status)}
+      <span class="l3">${scoreHTML(l.score)}${l.last_label ? chip(LABELS, l.last_label) : ""}${chip(STAGES, l.status)}
         <span class="truncate" style="margin-left:auto">${l.owner ? (l.mine ? "You" : esc(l.owner)) : "Unclaimed"}</span></span>
     </button>`).join("");
 }
@@ -591,6 +623,7 @@ function renderDetail() {
         <div style="min-width:0;flex:1"><h2>${esc(lead.company || lead.email)}</h2>
           <div class="d-meta"><span>${esc(lead.email || "")}</span>${lead.industry ? `<span>${esc(lead.industry.replace(/_/g, " "))}</span>` : ""}${site}</div></div>
       </div>
+      ${lead.score != null ? `<div class="d-score">${scoreHTML(lead.score)}<span class="why"><b style="font-weight:500;color:var(--fg)">Need score</b>${lead.score_reasons?.length ? " · " + lead.score_reasons.map(esc).join(" · ") : ""}${lead.source ? ` <span class="muted">· from ${esc(lead.source)}</span>` : ""}</span></div>` : ""}
       <div class="d-actions">${owner}<span class="spacer"></span>${buttons}${stageSel}</div>
     </div>
     <div class="d-body"><div class="thread">${thread.length ? thread.map(msgHTML).join("") : `<p class="muted">Nothing in this conversation yet.</p>`}</div></div>
@@ -687,6 +720,43 @@ async function reloadListOnly() {
   refreshCounts();
 }
 
+/* ---------------- what's working ---------------- */
+const pct = (v) => v == null ? "—" : (v % 1 ? v.toFixed(1) : String(v)) + "%";
+function repTable(title, note, items, minSample) {
+  if (!items.length) return "";
+  const max = Math.max(1, ...items.map(i => i.reply_rate || 0));
+  return `<div class="panel"><h3>${esc(title)}</h3>${note ? `<p class="lead2">${note}</p>` : ""}<div class="tablewrap"><table>
+    <thead><tr><th></th><th>Emailed</th><th>Replied</th><th>Reply rate</th><th>Interested</th><th>Meetings</th><th>Clients</th></tr></thead>
+    <tbody>${items.map(i => `<tr><td><b style="font-weight:500">${esc(i.name.replace(/_/g, " "))}</b></td>
+      <td class="tnum">${i.emailed}${i.bounced ? ` <span class="muted">(${i.bounced} bounced)</span>` : ""}</td>
+      <td class="tnum">${i.replied}</td>
+      <td><span class="rate ${i.small_sample ? "small" : ""}"><span class="tnum">${pct(i.reply_rate)}</span><span class="track"><i style="width:${Math.round(100 * (i.reply_rate || 0) / max)}%"></i></span>${i.small_sample ? `<span class="small-note">too few to judge</span>` : ""}</span></td>
+      <td class="tnum">${i.interested}</td><td class="tnum">${i.meetings}</td><td class="tnum">${i.clients}</td></tr>`).join("")}</tbody></table></div></div>`;
+}
+async function loadReport() {
+  const days = $("rep-days").value;
+  try {
+    const d = await api("/api/crm/report?days=" + days);
+    if ($("rep-days").value !== days) return;
+    const t = d.total;
+    if (!t.emailed) { $("rep-body").innerHTML = `<div class="empty"><b>Nothing emailed in this period</b>Results show here once the bot has sent emails.</div>`; return; }
+    $("rep-body").innerHTML = `
+      <div class="rep-sum" style="margin-bottom:20px">
+        <div class="panel kpi"><span>Organisations emailed</span><b>${t.emailed}</b></div>
+        <div class="panel kpi"><span>Reply rate</span><b>${pct(t.reply_rate)}</b></div>
+        <div class="panel kpi"><span>Interested</span><b>${t.interested}</b></div>
+        <div class="panel kpi"><span>Meetings and clients</span><b>${t.meetings}</b></div>
+      </div>
+      <p class="muted" style="font-size:12.5px;margin:-8px 0 16px">Reply rate = organisations that replied ÷ those whose email didn't bounce. Auto-replies don't count. A group needs at least ${d.min_sample} delivered emails before its rate means much.</p>
+      <div style="display:grid;gap:16px">
+        ${repTable("By industry", "", d.groups.segment)}
+        ${d.has_scores ? repTable("By need score", "If the scoring works, higher bands should reply more. If they don't, the rules need changing.", d.groups.score) : `<div class="panel"><h3>By need score</h3><p class="lead2" style="padding-bottom:14px">No scores yet. They appear once the targeting step has scored your leads.</p></div>`}
+        ${d.has_source ? repTable("By where the lead came from", "", d.groups.source) : ""}
+      </div>`;
+  } catch (e) { $("rep-body").innerHTML = `<div class="empty"><b>Couldn't load the report</b>${esc(e.message)}</div>`; }
+}
+$("rep-days").addEventListener("change", loadReport);
+
 /* ---------------- team ---------------- */
 function genPassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -774,7 +844,7 @@ $("f-pw").addEventListener("submit", async (e) => {
 async function refreshAll(manual) {
   if (state.busy) return;
   const t = $("c-text"); if (!manual && t && t.value.trim()) { refreshCounts(); return; } // don't disturb someone typing
-  if (!$("v-leads").hidden) await loadLeads(); else { refreshCounts(); if (state.view === "team") loadTeam(); }
+  if (!$("v-leads").hidden) await loadLeads(); else { refreshCounts(); if (state.view === "team") loadTeam(); if (state.view === "report") loadReport(); }
 }
 async function start() {
   let me;

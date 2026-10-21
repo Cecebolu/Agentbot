@@ -31,18 +31,29 @@ CREATE TABLE IF NOT EXISTS leads (
     -- est_year_source is 'site', 'whois' or 'unknown', NULL until it has been tried
     est_year INTEGER,
     est_year_source TEXT,
-    -- where the lead came from: source is 'search', 'csv' or 'manual'
+    -- where the lead came from: source is 'search', 'csv', 'manual', or the name of a
+    -- directory imported by targeting.py (e.g. 'CBK DCP directory Sep 2026')
     source TEXT,
     source_query TEXT,
     source_url TEXT,
     discovered_at TEXT,
+    -- from an imported directory (targeting.py): as listed there; date_licensed is YYYY-MM-DD.
+    -- source_email is the address the directory gave when targeting.py swapped it for a
+    -- general inbox found on the lead's website (NULL = email is still the directory's)
+    source_email TEXT,
+    phone TEXT,
+    physical_address TEXT,
+    date_licensed TEXT,
+    imported_at TEXT,
     -- when the status first became meeting / client
     meeting_at TEXT,
     client_at TEXT,
-    -- ranking score as last calculated (see ranking.py); score_reasons is JSON
+    -- need score 0-100 (see targeting.py): score_reasons is a JSON list of where the points
+    -- came from, scored_at when it was worked out (NULL = not scored yet)
     score INTEGER,
     score_reasons TEXT,
-    score_version INTEGER
+    score_version INTEGER,
+    scored_at TEXT
 );
 CREATE TABLE IF NOT EXISTS sent (
     id INTEGER PRIMARY KEY,
@@ -157,6 +168,9 @@ def init():
                                  ("leads", "meeting_at", "TEXT"), ("leads", "client_at", "TEXT"),
                                  ("leads", "score", "INTEGER"), ("leads", "score_reasons", "TEXT"),
                                  ("leads", "score_version", "INTEGER"),
+                                 ("leads", "phone", "TEXT"), ("leads", "physical_address", "TEXT"),
+                                 ("leads", "date_licensed", "TEXT"), ("leads", "imported_at", "TEXT"),
+                                 ("leads", "scored_at", "TEXT"), ("leads", "source_email", "TEXT"),
                                  ("replies", "message_id", "TEXT")):
             if col not in {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}:
                 c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {kind}")
@@ -335,15 +349,25 @@ def sent_count(lead_id):
     with conn() as c:
         return c.execute("SELECT COUNT(*) FROM sent WHERE lead_id=?", (lead_id,)).fetchone()[0]
 
-def awaiting_followup():
-    """Leads still at 'sent' that have had exactly one email, oldest send first. Each row is
-    the lead plus that email's sent_id, message_id, sent_subject and sent_on."""
+def awaiting_followup(n=1):
+    """Leads still at 'sent' that have had exactly n emails (so are waiting for follow-up n),
+    oldest first email first. Each row is the lead plus the first email's sent_id,
+    message_id and sent_subject (follow-ups thread under it), and sent_on, the date of the
+    last email (follow-ups are timed from it)."""
     with conn() as c:
         return c.execute("""
-            SELECT l.*, s.id AS sent_id, s.message_id, s.sent_subject, s.sent_on
-            FROM leads l JOIN sent s ON s.lead_id = l.id
-            WHERE l.status = 'sent' AND (SELECT COUNT(*) FROM sent s2 WHERE s2.lead_id = l.id) = 1
-            ORDER BY s.id""").fetchall()
+            SELECT l.*, s.id AS sent_id, s.message_id, s.sent_subject, last.sent_on
+            FROM leads l
+            JOIN sent s ON s.id = (SELECT MIN(id) FROM sent WHERE lead_id = l.id)
+            JOIN sent last ON last.id = (SELECT MAX(id) FROM sent WHERE lead_id = l.id)
+            WHERE l.status = 'sent' AND (SELECT COUNT(*) FROM sent s2 WHERE s2.lead_id = l.id) = ?
+            ORDER BY s.id""", (n,)).fetchall()
+
+def sent_thread(lead_id):
+    """Every email sent to this lead, oldest first: each row's message_id and sent_subject."""
+    with conn() as c:
+        return c.execute("SELECT message_id, sent_subject FROM sent WHERE lead_id=? ORDER BY id",
+                         (lead_id,)).fetchall()
 
 def recent_out_of_office(lead_id, days):
     """Whether an out-of-office reply from this lead arrived in the last `days` days."""
@@ -389,8 +413,9 @@ def claim_send(lead_id, followup, daily_limit, owner=None):
     """Claim one email just before it goes to the mail server. Returns None if it may go,
     otherwise why not. Rechecked here, in one write transaction, whatever the batch was
     built from: the lead still at the right status, not suppressed, not already emailed
-    (or being emailed), and today's sends plus emails in flight under the daily limit."""
-    step = 2 if followup else 1
+    (or being emailed), and today's sends plus emails in flight under the daily limit.
+    followup is 0 for a first email, else the follow-up's number."""
+    step = int(followup) + 1
     today = date.today().isoformat()  # the same day sent_today counts
     with immediate() as c:
         lead = c.execute("SELECT email, status FROM leads WHERE id=?", (lead_id,)).fetchone()
